@@ -26,6 +26,23 @@ Pi is a pure metadata/art endpoint. Listen on your Mac (or another AirPlay
 speaker) by selecting both "Computer" and this device in the Music app's AirPlay
 control.
 
+### Listening on headphones while the panel shows art
+
+macOS won't fan out to AirPlay speakers while Bluetooth headphones (e.g. AirPods
+Max) are already the Mac's active output — the multi-select checkboxes stay
+disabled and you can only pick one destination.
+
+**Order matters.** With the Bluetooth headphones still off, in Music's AirPlay
+menu select **Albumart first, then "Computer"** — so both are active before the
+headphones join. Only then enable the headphones. Music stays in multi-output
+mode and you get audio in the headphones plus art on the panel. If the
+headphones are already the active output when you open the menu, Music collapses
+to single-output and Albumart becomes unselectable.
+
+Fallback if that won't stick: create a **Multi-Output Device** in Audio MIDI
+Setup combining the headphones + Albumart. Bluetooth has no drift correction
+there, but since Albumart discards audio (null sink) that's harmless.
+
 ## Hardware
 
 - Raspberry Pi 4
