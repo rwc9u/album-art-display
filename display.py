@@ -3,10 +3,11 @@
 
 After each track change the title and artist are shown in a translucent bar
 across the bottom for OVERLAY_SECONDS, then the bar disappears leaving just the
-album art.
+album art. Lines too wide for the panel scroll horizontally (marquee).
 """
 import io
 import threading
+import time
 
 import paho.mqtt.client as mqtt
 from PIL import Image, ImageDraw, ImageFont
@@ -19,7 +20,11 @@ COVER_TOPIC = TOPIC_PREFIX + "/cover"
 ARTIST_TOPIC = TOPIC_PREFIX + "/artist"
 TITLE_TOPIC = TOPIC_PREFIX + "/title"
 
-OVERLAY_SECONDS = 10  # how long the title/artist bar stays after a track change
+OVERLAY_SECONDS = 10      # how long the title/artist bar stays after a track change
+SCROLL_SPEED = 16.0       # pixels/second for text too wide to fit
+SCROLL_START_DELAY = 1.0  # seconds to hold the start of a line before scrolling
+SCROLL_GAP = 12           # pixels of gap between the end and the wrapped start
+FPS = 30                  # animation frame rate while the overlay is showing
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf"
 
 options = RGBMatrixOptions()
@@ -40,43 +45,65 @@ except OSError:
 
 # Shared state (guarded by state_lock)
 state_lock = threading.Lock()
-current_art = None      # PIL.Image sized to WxH, or None
+current_art = None      # PIL.Image (RGB, WxH) or None
 artist = ""
 title = ""
-overlay_active = False
-overlay_timer = None
+overlay_start = 0.0     # monotonic time the current overlay began
+overlay_deadline = 0.0  # monotonic time the overlay should disappear
 
 
-def _fit(draw, text, font, max_w):
-    """Truncate text with an ellipsis so it fits within max_w pixels."""
-    if not text or draw.textlength(text, font=font) <= max_w:
-        return text
-    while text and draw.textlength(text + "…", font=font) > max_w:
-        text = text[:-1]
-    return text + "…"
-
-
-def _render_locked():
-    """Draw the current art (+ overlay if active). Caller must hold state_lock."""
-    if current_art is None:
+def _draw_line(draw, text, font, y, elapsed, fill):
+    """Draw a bar line, scrolling horizontally if it's wider than the panel."""
+    if not text:
         return
-    img = current_art.copy()
-    if overlay_active and (artist or title):
-        draw = ImageDraw.Draw(img, "RGBA")
-        bar_h = 18
-        draw.rectangle([0, H - bar_h, W, H], fill=(0, 0, 0, 170))
-        draw.text((1, H - bar_h + 1), _fit(draw, title, FONT_TITLE, W - 2),
-                  font=FONT_TITLE, fill=(255, 255, 255, 255))
-        draw.text((1, H - 9), _fit(draw, artist, FONT_ARTIST, W - 2),
-                  font=FONT_ARTIST, fill=(210, 210, 210, 255))
-    matrix.SetImage(img.convert("RGB"))
+    tw = draw.textlength(text, font=font)
+    if tw <= W - 2:
+        draw.text((1, y), text, font=font, fill=fill)
+        return
+    period = tw + SCROLL_GAP
+    off = (max(0.0, elapsed - SCROLL_START_DELAY) * SCROLL_SPEED) % period
+    x = 1 - off
+    draw.text((x, y), text, font=font, fill=fill)           # scrolling copy
+    draw.text((x + period, y), text, font=font, fill=fill)  # wrapped copy
 
 
-def _expire_overlay():
-    global overlay_active
-    with state_lock:
-        overlay_active = False
-        _render_locked()
+def _compose(art, title_text, artist_text, elapsed):
+    img = art.copy()
+    draw = ImageDraw.Draw(img, "RGBA")
+    bar_h = 18
+    draw.rectangle([0, H - bar_h, W, H], fill=(0, 0, 0, 170))
+    _draw_line(draw, title_text, FONT_TITLE, H - bar_h + 1, elapsed, (255, 255, 255, 255))
+    _draw_line(draw, artist_text, FONT_ARTIST, H - 9, elapsed, (210, 210, 210, 255))
+    return img
+
+
+def animator():
+    """Continuously drive the panel; scroll the overlay while it's active."""
+    prev_overlay = False
+    last_art = None
+    while True:
+        with state_lock:
+            art, a, t = current_art, artist, title
+            start, deadline = overlay_start, overlay_deadline
+        now = time.monotonic()
+        overlay_on = art is not None and now < deadline and (a or t)
+
+        if art is None:
+            if last_art is not None:
+                matrix.Clear()
+                last_art = None
+            time.sleep(0.1)
+        elif overlay_on:
+            matrix.SetImage(_compose(art, t, a, now - start))
+            last_art, prev_overlay = art, True
+            time.sleep(1.0 / FPS)
+        else:
+            # Redraw the plain art once on any transition (new art, or the
+            # overlay just expired); otherwise idle cheaply.
+            if art is not last_art or prev_overlay:
+                matrix.SetImage(art)
+                last_art, prev_overlay = art, False
+            time.sleep(0.15)
 
 
 def on_connect(client, userdata, flags, reason_code, properties=None):
@@ -85,7 +112,7 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
 
 
 def on_message(client, userdata, msg):
-    global current_art, artist, title, overlay_active, overlay_timer
+    global current_art, artist, title, overlay_start, overlay_deadline
     if msg.topic == COVER_TOPIC:
         if len(msg.payload) > 100:
             try:
@@ -94,33 +121,24 @@ def on_message(client, userdata, msg):
             except Exception as e:
                 print(f"[display] decode failed: {e}", flush=True)
                 return
+            now = time.monotonic()
             with state_lock:
                 current_art = img
-                overlay_active = True
-                _render_locked()
-                if overlay_timer:
-                    overlay_timer.cancel()
-                overlay_timer = threading.Timer(OVERLAY_SECONDS, _expire_overlay)
-                overlay_timer.daemon = True
-                overlay_timer.start()
+                overlay_start = now
+                overlay_deadline = now + OVERLAY_SECONDS
             print(f"[display] new cover ({len(msg.payload)} bytes)", flush=True)
         else:
             with state_lock:
                 current_art = None
-                overlay_active = False
-                matrix.Clear()
-    elif msg.topic in (ARTIST_TOPIC, TITLE_TOPIC):
-        value = msg.payload.decode("utf-8", "replace")
+    elif msg.topic == ARTIST_TOPIC:
         with state_lock:
-            if msg.topic == ARTIST_TOPIC:
-                artist = value
-            else:
-                title = value
-            # Refresh the bar if it's currently showing (also covers the case
-            # where retained artist/title arrive after the retained cover).
-            if overlay_active:
-                _render_locked()
+            artist = msg.payload.decode("utf-8", "replace")
+    elif msg.topic == TITLE_TOPIC:
+        with state_lock:
+            title = msg.payload.decode("utf-8", "replace")
 
+
+threading.Thread(target=animator, daemon=True).start()
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect

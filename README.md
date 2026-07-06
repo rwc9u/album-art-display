@@ -6,7 +6,8 @@ A small MQTT client that subscribes to cover art published by
 [shairport-sync](https://github.com/mikebrady/shairport-sync) and renders it to
 an [hzeller/rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix)
 panel. After each track change it briefly shows the title and artist in a bar
-across the bottom, then fades back to just the album art.
+across the bottom, then fades back to just the album art. Lines too long to fit
+scroll horizontally.
 
 ## Architecture
 
@@ -112,6 +113,8 @@ Edit the constants at the top of `display.py`:
 
 - `OVERLAY_SECONDS` — how long the title/artist bar stays after a track change
 - `FONT_PATH` — TrueType font used for the overlay text
+- `SCROLL_SPEED` / `SCROLL_START_DELAY` / `SCROLL_GAP` / `FPS` — marquee tuning
+  for lines that are wider than the panel
 
 Matrix geometry and GPIO options are set in `display.py` via `RGBMatrixOptions`
 (`rows`, `cols`, `hardware_mapping`, `gpio_slowdown`).
