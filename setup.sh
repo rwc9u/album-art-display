@@ -36,7 +36,8 @@ apt-get update -qq
 apt-get install -y \
   mosquitto mosquitto-clients \
   python3-dev python3-pip cython3 cmake git \
-  python3-paho-mqtt python3-pil
+  python3-paho-mqtt python3-pil \
+  fonts-dejavu-core
 
 echo "==> LED-matrix Python bindings"
 if python3 -c "import rgbmatrix" 2>/dev/null; then

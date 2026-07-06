@@ -5,7 +5,8 @@ Show the album art of whatever's playing over AirPlay on a 64×64 RGB LED matrix
 A small MQTT client that subscribes to cover art published by
 [shairport-sync](https://github.com/mikebrady/shairport-sync) and renders it to
 an [hzeller/rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix)
-panel.
+panel. After each track change it briefly shows the title and artist in a bar
+across the bottom, then fades back to just the album art.
 
 ## Architecture
 
@@ -37,6 +38,7 @@ control.
 - `shairport-sync` built with `--with-metadata` and `--with-mqtt-client`
 - Python: [`rgbmatrix`](https://github.com/hzeller/rpi-rgb-led-matrix) bindings,
   `paho-mqtt` (v2.x), `Pillow`
+- `fonts-dejavu-core` (for the title/artist overlay text)
 
 ## Config
 
@@ -107,6 +109,9 @@ Edit the constants at the top of `display.py`:
 
 - `BROKER` / `PORT` — MQTT broker
 - `TOPIC_PREFIX` — must match shairport-sync's `topic`
+
+- `OVERLAY_SECONDS` — how long the title/artist bar stays after a track change
+- `FONT_PATH` — TrueType font used for the overlay text
 
 Matrix geometry and GPIO options are set in `display.py` via `RGBMatrixOptions`
 (`rows`, `cols`, `hardware_mapping`, `gpio_slowdown`).
