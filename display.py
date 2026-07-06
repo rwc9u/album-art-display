@@ -19,7 +19,7 @@ COVER_TOPIC = TOPIC_PREFIX + "/cover"
 ARTIST_TOPIC = TOPIC_PREFIX + "/artist"
 TITLE_TOPIC = TOPIC_PREFIX + "/title"
 
-OVERLAY_SECONDS = 20  # how long the title/artist bar stays after a track change
+OVERLAY_SECONDS = 10  # how long the title/artist bar stays after a track change
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf"
 
 options = RGBMatrixOptions()
@@ -33,8 +33,8 @@ matrix = RGBMatrix(options=options)
 W, H = matrix.width, matrix.height
 
 try:
-    FONT_TITLE = ImageFont.truetype(FONT_PATH, 10)
-    FONT_ARTIST = ImageFont.truetype(FONT_PATH, 9)
+    FONT_TITLE = ImageFont.truetype(FONT_PATH, 8)
+    FONT_ARTIST = ImageFont.truetype(FONT_PATH, 7)
 except OSError:
     FONT_TITLE = FONT_ARTIST = ImageFont.load_default()
 
@@ -63,11 +63,11 @@ def _render_locked():
     img = current_art.copy()
     if overlay_active and (artist or title):
         draw = ImageDraw.Draw(img, "RGBA")
-        bar_h = 23
+        bar_h = 18
         draw.rectangle([0, H - bar_h, W, H], fill=(0, 0, 0, 170))
         draw.text((1, H - bar_h + 1), _fit(draw, title, FONT_TITLE, W - 2),
                   font=FONT_TITLE, fill=(255, 255, 255, 255))
-        draw.text((1, H - 11), _fit(draw, artist, FONT_ARTIST, W - 2),
+        draw.text((1, H - 9), _fit(draw, artist, FONT_ARTIST, W - 2),
                   font=FONT_ARTIST, fill=(210, 210, 210, 255))
     matrix.SetImage(img.convert("RGB"))
 
