@@ -38,30 +38,30 @@ control.
 - Python: [`rgbmatrix`](https://github.com/hzeller/rpi-rgb-led-matrix) bindings,
   `paho-mqtt` (v2.x), `Pillow`
 
-## shairport-sync config
+## Config
 
-Relevant blocks in `/etc/shairport-sync.conf`:
+Sample configs live in [`config/`](config/):
 
-```
-alsa = {
-  output_device = "null";   // discard audio; Pi is art-only
-};
+- [`config/mosquitto.conf`](config/mosquitto.conf) — the MQTT broker config
+  (drop into `/etc/mosquitto/conf.d/`). Anonymous access on port 1883 — trusted
+  LAN only.
+- [`config/shairport-sync.conf.example`](config/shairport-sync.conf.example) —
+  the relevant blocks to merge into `/etc/shairport-sync.conf`.
 
-metadata = {
-  enabled = "yes";
-  include_cover_art = "yes";
-};
+### mosquitto
 
-mqtt = {
-  enabled = "yes";
-  hostname = "localhost";           // or the broker host
-  port = 1883;
-  topic = "shairport-sync/rpih1";   // must match TOPIC_PREFIX in display.py
-  publish_parsed = "yes";           // artist/album/title/…
-  publish_cover  = "yes";           // binary cover art
-  publish_retain = "yes";           // broker keeps last art → shows on boot
-};
-```
+Copy `config/mosquitto.conf` to `/etc/mosquitto/conf.d/mosquitto.conf`. Retained
+cover art only survives a reboot if broker persistence is on — Debian's default
+`/etc/mosquitto/mosquitto.conf` already sets `persistence true` /
+`persistence_location /var/lib/mosquitto/`; keep it.
+
+### shairport-sync
+
+Merge `config/shairport-sync.conf.example` into `/etc/shairport-sync.conf`. Key
+points: `alsa.output_device = "null"` (art-only, no audio hardware),
+`metadata.enabled`/`include_cover_art`, and in the `mqtt` block
+`publish_parsed` + `publish_cover` + `publish_retain` all set to `"yes"` with
+`topic` matching `TOPIC_PREFIX` in `display.py`.
 
 ## Install
 

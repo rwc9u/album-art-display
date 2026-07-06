@@ -1,0 +1,30 @@
+// Relevant blocks from /etc/shairport-sync.conf for the album-art-display setup.
+// Merge these into the full shairport-sync.conf (which has many other options).
+
+general = {
+  name = "Albumart";   // the AirPlay speaker name shown on your Mac/iPhone
+};
+
+alsa = {
+  output_device = "null";   // discard audio — the Pi is an art-only endpoint,
+                            // so it needs no speakers and won't crash on a
+                            // missing/incompatible output device
+};
+
+metadata = {
+  enabled = "yes";           // solicit metadata from the source
+  include_cover_art = "yes"; // solicit cover art
+};
+
+mqtt = {
+  enabled = "yes";
+  hostname = "localhost";           // MQTT broker host (broker runs on the Pi)
+  port = 1883;
+  topic = "shairport-sync/rpih1";   // MUST match TOPIC_PREFIX in display.py
+  publish_raw = "no";
+  publish_parsed = "yes";           // artist/album/title/genre/volume/… topics
+  publish_cover = "yes";            // binary cover art on <topic>/cover
+  publish_retain = "yes";           // broker keeps the last message per topic,
+                                    // so the panel repaints on boot/restart
+  enable_remote = "yes";            // optional: remote control via <topic>/remote
+};
