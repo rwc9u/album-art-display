@@ -65,15 +65,41 @@ points: `alsa.output_device = "null"` (art-only, no audio hardware),
 
 ## Install
 
-```bash
-# Python bindings for the matrix (from the rpi-rgb-led-matrix checkout)
-sudo apt-get install -y python3-dev cython3 cmake python3-paho-mqtt
-cd rpi-rgb-led-matrix && sudo pip install . --break-system-packages
+One-command bootstrap (from the repo checkout):
 
-# Run as a service (needs root for GPIO)
-sudo cp albumart-display.service /etc/systemd/system/
-sudo systemctl enable --now albumart-display
+```bash
+sudo ./setup.sh
 ```
+
+This installs the MQTT broker + Python deps, builds the LED-matrix bindings,
+installs `config/mosquitto.conf`, and enables the `mosquitto` and
+`albumart-display` services (the display service is generated to run
+`display.py` from wherever you cloned the repo). shairport-sync is not installed
+by the script — see below.
+
+<details>
+<summary>Manual steps (what setup.sh automates)</summary>
+
+```bash
+# MQTT broker + Python deps
+sudo apt-get install -y mosquitto mosquitto-clients python3-dev python3-pip \
+  cython3 cmake git python3-paho-mqtt python3-pil
+
+# Python bindings for the matrix (from the rpi-rgb-led-matrix checkout)
+cd rpi-rgb-led-matrix && sudo pip3 install . --break-system-packages
+
+# Broker config + display service (needs root for GPIO)
+sudo cp config/mosquitto.conf /etc/mosquitto/conf.d/
+sudo cp albumart-display.service /etc/systemd/system/
+sudo systemctl enable --now mosquitto albumart-display
+```
+</details>
+
+### shairport-sync (not automated)
+
+Build shairport-sync with `--with-metadata --with-mqtt-client` (plus alsa,
+avahi, ssl), then merge `config/shairport-sync.conf.example` into
+`/etc/shairport-sync.conf` and `sudo systemctl restart shairport-sync`.
 
 ## Configuration
 
