@@ -33,6 +33,12 @@ control.
 - 64×64 RGB LED matrix (HUB75)
 - 5V power supply for the panel
 
+> **Note:** 64×64 panels need the fourth address line (E), which the Bonnet
+> doesn't wire up by default. You must **solder the small jumper on the Bonnet
+> PCB** (bridge the center pad to pin 8) to enable it — otherwise only half the
+> panel lights up. See Adafruit's
+> [RGB Matrix Bonnet guide](https://learn.adafruit.com/adafruit-rgb-matrix-bonnet-for-raspberry-pi).
+
 ## Dependencies
 
 - `mosquitto` MQTT broker (with `persistence true` so retained art survives reboots)
