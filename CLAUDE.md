@@ -34,8 +34,11 @@ Two threads share state guarded by `state_lock`:
 - **animator** (daemon thread): the render loop. Draws plain art when idle;
   while the overlay is active (`now < overlay_deadline`) it composites a
   translucent bottom bar with title/artist at `FPS` and scrolls any line wider
-  than the panel (marquee). Redraws the plain image once on each transition, then
-  idles cheaply — it does not repaint every tick.
+  than the panel (marquee). Redraws once on each transition, then idles cheaply
+  — it does not repaint every tick. Tracks `last_cover_time` as an idle clock:
+  after `IDLE_DIM_SECONDS` with no new cover it dims the art, after
+  `IDLE_BLANK_SECONDS` it blanks the panel (for always-on longevity); a new
+  cover restores full brightness.
 
 A cover payload of ≤100 bytes is treated as "no art" (clears the panel), not an
 image to decode.

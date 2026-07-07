@@ -138,6 +138,11 @@ Edit the constants at the top of `display.py`:
 - `FONT_PATH` — TrueType font used for the overlay text
 - `SCROLL_SPEED` / `SCROLL_START_DELAY` / `SCROLL_GAP` / `FPS` — marquee tuning
   for lines that are wider than the panel
+- `IDLE_DIM_SECONDS` / `IDLE_BLANK_SECONDS` / `IDLE_DIM_LEVEL` — for an always-on
+  panel, dim the art then blank it after this long with no new cover, so one
+  bright static image isn't held for hours. A new cover only arrives on a track
+  change, so keep the timeouts longer than a typical track to avoid dimming
+  mid-playback.
 
 Matrix geometry and GPIO options are set in `display.py` via `RGBMatrixOptions`
 (`rows`, `cols`, `hardware_mapping`, `gpio_slowdown`).
