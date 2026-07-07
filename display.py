@@ -34,6 +34,15 @@ options.chain_length = 1
 options.parallel = 1
 options.hardware_mapping = "adafruit-hat"
 options.gpio_slowdown = 4
+# Higher refresh rate hides the dark banding a camera/phone catches when it
+# photographs or films the panel (the eye doesn't see it, a fast shutter does).
+# Fewer PWM bits and a shorter LSB pulse both raise refresh at the cost of color
+# gradation; dithering recovers some of that. Tune on the Pi — set
+# show_refresh_rate = True to print the achieved Hz, aim for a few hundred.
+options.pwm_bits = 8            # default 11; lower = higher refresh, less color depth
+options.pwm_lsb_nanoseconds = 80  # default 130; lower = higher refresh, more ghosting risk
+options.pwm_dither_bits = 1     # trade a little temporal dither back for color depth
+# options.show_refresh_rate = True  # uncomment to print achieved refresh rate
 matrix = RGBMatrix(options=options)
 W, H = matrix.width, matrix.height
 
