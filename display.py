@@ -3,7 +3,9 @@
 
 After each track change the title and artist are shown in a translucent bar
 across the bottom for OVERLAY_SECONDS, then the bar disappears leaving just the
-album art. Lines too wide for the panel scroll horizontally (marquee).
+album art. Lines too wide for the panel scroll horizontally (marquee). A track
+with no art (e.g. after joining mid-track) shows the bar on black instead,
+until the idle-dim point.
 
 When nothing new arrives for a while the panel dims (IDLE_DIM_SECONDS) and then
 blanks entirely (IDLE_BLANK_SECONDS), so an always-on display isn't left holding
@@ -71,6 +73,7 @@ title = ""
 overlay_start = 0.0     # monotonic time the current overlay began
 overlay_deadline = 0.0  # monotonic time the overlay should disappear
 last_cover_time = 0.0   # monotonic time the most recent cover arrived (idle clock)
+text_card = False       # current_art is a black stand-in for a missing cover
 
 
 def _draw_line(draw, text, font, y, elapsed, fill):
@@ -112,9 +115,10 @@ def animator():
         with state_lock:
             art, a, t = current_art, artist, title
             start, deadline = overlay_start, overlay_deadline
-            cover_time = last_cover_time
+            cover_time, card = last_cover_time, text_card
         now = time.monotonic()
-        overlay_on = art is not None and now < deadline and (a or t)
+        overlay_on = art is not None and (a or t) and (
+            now < deadline or (card and now - cover_time < IDLE_DIM_SECONDS))
 
         if art is None:
             if last_art is not None:
@@ -153,7 +157,7 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
 
 def on_message(client, userdata, msg):
     global current_art, artist, title, overlay_start, overlay_deadline
-    global last_cover_time
+    global last_cover_time, text_card
     if msg.topic == COVER_TOPIC:
         if len(msg.payload) > 100:
             try:
@@ -165,13 +169,20 @@ def on_message(client, userdata, msg):
             now = time.monotonic()
             with state_lock:
                 current_art = img
+                text_card = False
                 overlay_start = now
                 overlay_deadline = now + OVERLAY_SECONDS
                 last_cover_time = now
             print(f"[display] new cover ({len(msg.payload)} bytes)", flush=True)
         else:
+            # A mid-track join sends no art until the next track, so show the text instead.
+            now = time.monotonic()
             with state_lock:
-                current_art = None
+                current_art = Image.new("RGB", (W, H))
+                text_card = True
+                overlay_start = now
+                overlay_deadline = now + OVERLAY_SECONDS
+                last_cover_time = now
     elif msg.topic == ARTIST_TOPIC:
         with state_lock:
             artist = msg.payload.decode("utf-8", "replace")

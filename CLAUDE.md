@@ -32,7 +32,7 @@ Two threads share state guarded by `state_lock`:
   incoming cover PNGs into a resized `PIL.Image`, and updates `artist`/`title`.
   A new cover resets `overlay_start`/`overlay_deadline` to trigger the overlay.
 - **animator** (daemon thread): the render loop. Draws plain art when idle;
-  while the overlay is active (`now < overlay_deadline`) it composites a
+  while the overlay is active (`now < overlay_deadline`, or a text card is up) it composites a
   translucent bottom bar with title/artist at `FPS` and scrolls any line wider
   than the panel (marquee). Redraws once on each transition, then idles cheaply
   — it does not repaint every tick. Tracks `last_cover_time` as an idle clock:
@@ -40,8 +40,9 @@ Two threads share state guarded by `state_lock`:
   `IDLE_BLANK_SECONDS` it blanks the panel (for always-on longevity); a new
   cover restores full brightness.
 
-A cover payload of ≤100 bytes is treated as "no art" (clears the panel), not an
-image to decode.
+A cover payload of ≤100 bytes (e.g. a mid-track join) is "no art": it becomes a
+black "text card" (`text_card = True`) that keeps the title/artist bar up until
+`IDLE_DIM_SECONDS`, after which the idle branch shows black.
 
 ## Critical coupling
 
