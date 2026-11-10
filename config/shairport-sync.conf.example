@@ -9,6 +9,8 @@ alsa = {
   output_device = "null";   // discard audio — the Pi is an art-only endpoint,
                             // so it needs no speakers and won't crash on a
                             // missing/incompatible output device
+  disable_synchronization = "yes";   // the null sink reports no usable delay,
+                                     // so sync only causes endless resyncs
 };
 
 metadata = {
