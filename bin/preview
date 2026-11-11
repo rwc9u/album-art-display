@@ -1,0 +1,75 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Renders every slide to PNG (plus 8x nearest-neighbour copies) without the
+# matrix or MQTT. Usage: bin/preview OUTPUT_DIR
+
+require "fileutils"
+require_relative "../lib/albumart/renderer"
+require_relative "../lib/albumart/scene"
+require_relative "../lib/albumart/clock_face"
+require_relative "../lib/albumart/weather"
+
+out_dir = ARGV.fetch(0) { abort "usage: bin/preview OUTPUT_DIR" }
+FileUtils.mkdir_p(out_dir)
+renderer = Albumart::Renderer.new
+
+save = lambda do |name, scene|
+  image = renderer.compose(scene)
+  image.write(File.join(out_dir, "#{name}.png"))
+  image.sample(8).write(File.join(out_dir, "#{name}@8x.png"))
+end
+
+scene = lambda do |slide, **fields|
+  Albumart::Scene.new(
+    slide:, art: nil, title: "", artist: "", bar: false, elapsed: 0.0, weather: nil, clock_face: nil, **fields,
+  )
+end
+
+sample_cover = Magick::Image.new(600, 600, Magick::GradientFill.new(0, 0, 600, 0, "#E04040", "#3040C0"))
+Magick::Draw.new.fill("#FFD040").circle(300, 300, 300, 120).draw(sample_cover)
+cover_blob = sample_cover.to_blob { |info| info.format = "JPEG" }
+art = renderer.decode_cover(cover_blob)
+
+save.call("art", scene.call(:art, art:))
+save.call("art-bar", scene.call(:art, art:, bar: true, title: "Short Title", artist: "Artist"))
+long_title = "A Very Long Song Title That Has To Scroll"
+long_artist = "Someone & The Long Band Name"
+[0.0, 2.0, 6.0].each do |elapsed|
+  save.call(
+    "art-bar-scroll-#{elapsed.to_i}s",
+    scene.call(:art, art:, bar: true, title: long_title, artist: long_artist, elapsed:),
+  )
+end
+save.call(
+  "art-bar-literal-text",
+  scene.call(:art, art:, bar: true, title: "50% %w \\n %[h]", artist: " @/etc/hosts"),
+)
+save.call("text-card", scene.call(:art, art: renderer.blank, bar: true, title: "Joined Mid-Track", artist: "Artist"))
+
+save.call("time-12h", scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2026, 11, 10, 12, 45))))
+save.call("time-12h-morning", scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2026, 11, 10, 9, 5))))
+save.call("time-12h-widest", scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2027, 5, 26, 12, 58))))
+save.call(
+  "time-24h",
+  scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2026, 11, 10, 21, 5), twenty_four_hour: true)),
+)
+
+Albumart::Weather::CONDITION_BY_CODE.values.uniq.each do |condition|
+  { "day" => true, "night" => false }.each do |label, day|
+    reading = Albumart::Weather::Reading.new(
+      temperature: 72, condition:, day:, high: 78, low: 55, fetched_at: 0.0,
+    )
+    save.call("weather-#{condition}-#{label}", scene.call(:weather, weather: reading))
+  end
+end
+wide = Albumart::Weather::Reading.new(
+  temperature: -12, condition: :snow, day: true, high: -3, low: -18, fetched_at: 0.0,
+)
+save.call("weather-wide-numbers", scene.call(:weather, weather: wide))
+hot = Albumart::Weather::Reading.new(
+  temperature: 104, condition: :clear, day: true, high: 108, low: 81, fetched_at: 0.0,
+)
+save.call("weather-three-digits", scene.call(:weather, weather: hot))
+
+puts "wrote previews to #{out_dir} (#{Magick::Version}, font: #{renderer.font || 'ImageMagick default'})"

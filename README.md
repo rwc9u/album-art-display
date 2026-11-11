@@ -1,13 +1,24 @@
 # album-art-display
 
-Show the album art of whatever's playing over AirPlay on a 64×64 RGB LED matrix.
+Show the album art of whatever's playing over AirPlay on a 64×64 RGB LED matrix,
+rotating with the time and the local weather.
 
-A small MQTT client that subscribes to cover art published by
+A small Ruby MQTT client that subscribes to cover art published by
 [shairport-sync](https://github.com/mikebrady/shairport-sync) and renders it to
 an [hzeller/rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix)
-panel. After each track change it briefly shows the title and artist in a bar
-across the bottom, then fades back to just the album art. Lines too long to fit
+panel. After each track change it shows the art with the title and artist in a
+bar across the bottom for 10 seconds, then the panel rotates through three
+slides, 5 seconds each: **weather, time, album art**. Lines too long to fit
 scroll horizontally.
+
+- No cover yet, or no new cover for an hour: the art slide drops out and the
+  panel alternates weather and time. The next cover brings it back.
+- No weather configured, or no fresh data: the weather slide is skipped.
+- A track with no art (e.g. after joining mid-track) shows a "text card": the
+  title/artist bar on black, in the art slide's place.
+
+`display.py` is the legacy Python implementation, kept as a rollback (see
+[Rolling back](#rolling-back)).
 
 ## Architecture
 
@@ -16,9 +27,11 @@ Mac / iPhone (Music app, AirPlay)
         │  audio + metadata + cover art
         ▼
 shairport-sync  ──publishes──▶  MQTT broker (mosquitto)
-                                        │  shairport-sync/<name>/cover (PNG)
+                                        │  shairport-sync/<name>/cover (JPEG/PNG)
                                         ▼
-                                  display.py  ──▶  64×64 RGB LED matrix
+                            bin/albumart-display  ──▶  64×64 RGB LED matrix
+                                        ▲
+                     api.open-meteo.com (weather, every 10 min)
 ```
 
 Audio is not played on the Pi — shairport-sync uses the ALSA `null` sink, so the
@@ -60,9 +73,16 @@ there, but since Albumart discards audio (null sink) that's harmless.
 
 - `mosquitto` MQTT broker (with `persistence true` so retained art survives reboots)
 - `shairport-sync` built with `--with-metadata` and `--with-mqtt-client`
-- Python: [`rgbmatrix`](https://github.com/hzeller/rpi-rgb-led-matrix) bindings,
-  `paho-mqtt` (v2.x), `Pillow`
-- `fonts-dejavu-core` (for the title/artist overlay text)
+- Ruby 3.3 from apt (`ruby`, `ruby-dev`), plus `ruby-ffi`, `ruby-rmagick` and the
+  `mqtt` gem (`gem install mqtt`; there is no apt package). No Bundler at runtime.
+- `librgbmatrix.so.1`, built from the hzeller checkout with `make -C lib`
+- `fonts-dejavu-core` (for all panel text)
+
+| Python library (legacy) | Ruby replacement |
+|---|---|
+| `paho-mqtt` | [`mqtt`](https://rubygems.org/gems/mqtt) gem (0.7.x, pure Ruby). It does not reconnect on its own; `lib/albumart/mqtt_listener.rb` does. |
+| `Pillow` | `rmagick` (apt `ruby-rmagick` 6.0.1 on Debian trixie; the code also runs on 7.x) |
+| `rgbmatrix` (hzeller Python binding) | No Ruby gem exists. `lib/albumart/matrix.rb` binds hzeller's C API (`include/led-matrix-c.h`) with `ffi`. |
 
 ## Config
 
@@ -73,6 +93,8 @@ Sample configs live in [`config/`](config/):
   LAN only.
 - [`config/shairport-sync.conf.example`](config/shairport-sync.conf.example) —
   the relevant blocks to merge into `/etc/shairport-sync.conf`.
+- [`config/albumart-display.env.example`](config/albumart-display.env.example) —
+  weather location, installed as `/etc/albumart-display.env`.
 
 ### mosquitto
 
@@ -87,7 +109,25 @@ Merge `config/shairport-sync.conf.example` into `/etc/shairport-sync.conf`. Key
 points: `alsa.output_device = "null"` (art-only, no audio hardware),
 `metadata.enabled`/`include_cover_art`, and in the `mqtt` block
 `publish_parsed` + `publish_cover` + `publish_retain` all set to `"yes"` with
-`topic` matching `TOPIC_PREFIX` in `display.py`.
+`topic` matching `TOPIC_PREFIX` in `lib/albumart/config.rb`.
+
+### Weather
+
+Weather comes from [Open-Meteo](https://open-meteo.com/), which needs no API key.
+The location is private and never committed: set it in
+`/etc/albumart-display.env` (mode 0600), which the service reads via
+`EnvironmentFile=`:
+
+```bash
+WEATHER_LAT=<latitude>
+WEATHER_LON=<longitude>
+# fahrenheit (default) or celsius; systemd does not allow comments after a value
+WEATHER_UNITS=fahrenheit
+```
+
+Without `WEATHER_LAT`/`WEATHER_LON` the service logs one line and skips the
+weather slide. Data refreshes every 10 minutes (1 minute after a failure) and
+is treated as missing once it is more than an hour old.
 
 ## Install
 
@@ -97,25 +137,29 @@ One-command bootstrap (from the repo checkout):
 sudo ./setup.sh
 ```
 
-This installs the MQTT broker + Python deps, builds the LED-matrix bindings,
-installs `config/mosquitto.conf`, and enables the `mosquitto` and
-`albumart-display` services (the display service is generated to run
-`display.py` from wherever you cloned the repo). shairport-sync is not installed
-by the script — see below.
+This installs the MQTT broker, Ruby and its libraries, builds the LED-matrix
+shared library, installs `config/mosquitto.conf`, installs the weather env
+template to `/etc/albumart-display.env` if that file doesn't exist yet, and
+enables the `mosquitto` and `albumart-display` services. The display service is
+generated to run `/usr/bin/ruby bin/albumart-display` from wherever you cloned
+the repo, with `RGBMATRIX_LIB` pointing at the built library. shairport-sync is
+not installed by the script — see below.
 
 <details>
 <summary>Manual steps (what setup.sh automates)</summary>
 
 ```bash
-# MQTT broker + Python deps
-sudo apt-get install -y mosquitto mosquitto-clients python3-dev python3-pip \
-  cython3 cmake git python3-paho-mqtt python3-pil
+# MQTT broker, Ruby, build tools
+sudo apt-get install -y mosquitto mosquitto-clients ruby ruby-dev ruby-ffi \
+  ruby-rmagick build-essential git fonts-dejavu-core
+sudo gem install --no-document mqtt
 
-# Python bindings for the matrix (from the rpi-rgb-led-matrix checkout)
-cd rpi-rgb-led-matrix && sudo pip3 install . --break-system-packages
+# Shared library for the matrix (from the rpi-rgb-led-matrix checkout)
+make -C rpi-rgb-led-matrix/lib
 
-# Broker config + display service (needs root for GPIO)
+# Broker config, weather settings, display service (needs root for GPIO)
 sudo cp config/mosquitto.conf /etc/mosquitto/conf.d/
+sudo install -m 0600 config/albumart-display.env.example /etc/albumart-display.env
 sudo cp albumart-display.service /etc/systemd/system/
 sudo systemctl enable --now mosquitto albumart-display
 ```
@@ -129,20 +173,49 @@ avahi, ssl), then merge `config/shairport-sync.conf.example` into
 
 ## Configuration
 
-Edit the constants at the top of `display.py`:
+Edit the constants in `lib/albumart/config.rb`:
 
 - `BROKER` / `PORT` — MQTT broker
 - `TOPIC_PREFIX` — must match shairport-sync's `topic`
-
-- `OVERLAY_SECONDS` — how long the title/artist bar stays after a track change
-- `FONT_PATH` — TrueType font used for the overlay text
+- `OVERLAY_SECONDS` — how long the title/artist bar shows after a track change
+- `SLIDE_SECONDS` — each slide's turn in the rotation
+- `ART_IDLE_SECONDS` — the art slide leaves the rotation after this long with no
+  new cover. A cover only arrives on a track change, so keep it longer than a
+  typical track.
+- `TIME_24H` — 24-hour clock instead of `h:MM AM/PM`
+- `FONT_PATH` — TrueType font used for all text
 - `SCROLL_SPEED` / `SCROLL_START_DELAY` / `SCROLL_GAP` / `FPS` — marquee tuning
   for lines that are wider than the panel
-- `IDLE_DIM_SECONDS` / `IDLE_BLANK_SECONDS` / `IDLE_DIM_LEVEL` — for an always-on
-  panel, dim the art then blank it after this long with no new cover, so one
-  bright static image isn't held for hours. A new cover only arrives on a track
-  change, so keep the timeouts longer than a typical track to avoid dimming
-  mid-playback.
+- `MATRIX_OPTIONS` / `GPIO_SLOWDOWN` — matrix geometry and GPIO options
 
-Matrix geometry and GPIO options are set in `display.py` via `RGBMatrixOptions`
-(`rows`, `cols`, `hardware_mapping`, `gpio_slowdown`).
+`RGBMATRIX_LIB` (environment) overrides the path to `librgbmatrix.so.1`.
+
+## Development
+
+Off the Pi you can run the tests and render previews; the matrix itself only
+works on the device.
+
+```bash
+gem install ffi rmagick mqtt   # rmagick needs ImageMagick (e.g. brew install imagemagick)
+rake test                      # minitest, with warnings on
+bin/preview /tmp/albumart-preview
+```
+
+The scheduler, weather and clock code load without `ffi`, `rmagick` or `mqtt`,
+so `rake test` needs none of them. `bin/preview` renders every slide (each
+weather condition by day and night, the time, art with the bar, a text card) to
+PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
+Arial Narrow Bold, so text widths differ slightly from the Pi's DejaVu.
+
+## Rolling back
+
+`display.py` is the previous Python implementation and still works with the
+Python dependencies the old `setup.sh` installed (`python3-paho-mqtt`,
+`python3-pil`, and the `rgbmatrix` binding via pip). It has no time or weather
+slides. To switch back, point the unit at it and restart:
+
+```bash
+sudo sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/python3 /home/rob/albumart-display/display.py|' \
+  /etc/systemd/system/albumart-display.service
+sudo systemctl daemon-reload && sudo systemctl restart albumart-display
+```

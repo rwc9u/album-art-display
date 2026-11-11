@@ -4,60 +4,90 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-file Python client (`display.py`) that renders AirPlay album art on a
-64×64 RGB LED matrix. It is a leaf node in this pipeline:
+A small Ruby program (`bin/albumart-display` + `lib/albumart/`) that renders
+AirPlay album art, the time and the local weather on a 64×64 RGB LED matrix. It
+is a leaf node in this pipeline:
 
 ```
-Mac/iPhone (AirPlay) → shairport-sync → MQTT broker (mosquitto) → display.py → LED matrix
+Mac/iPhone (AirPlay) → shairport-sync → MQTT broker (mosquitto) → bin/albumart-display → LED matrix
 ```
 
-shairport-sync publishes cover art + parsed metadata to MQTT topics; `display.py`
+shairport-sync publishes cover art + parsed metadata to MQTT topics; the program
 subscribes and paints the panel. The Pi plays no audio (ALSA `null` sink) — it is
-a pure metadata/art endpoint.
+a pure metadata/art endpoint. Weather comes from Open-Meteo (keyless) for a
+location read from `/etc/albumart-display.env`, which is private and never
+committed.
 
-## Runs only on a Raspberry Pi
+`display.py` is the legacy Python implementation, kept untouched as a rollback.
 
-This code **cannot run or be tested on a dev machine**. It imports `rgbmatrix`
-(hzeller/rpi-rgb-led-matrix C bindings, built on-device) and drives GPIO, which
-requires running as root on a Pi with the Adafruit RGB Matrix Bonnet. There is
-no test suite and no configured linter — verification means deploying to the Pi
-and watching `journalctl -u albumart-display`. Treat edits as untestable locally
-and reason about correctness by reading the code.
+Runtime: Ruby 3.3 from apt (`/usr/bin/ruby`), apt `ruby-ffi` and `ruby-rmagick`
+(6.0.1 on trixie), and the `mqtt` gem installed with `gem install`. No Bundler
+at runtime; the `Gemfile` is for local development only.
 
-## Architecture of display.py
+## What runs where
 
-Two threads share state guarded by `state_lock`:
+The matrix code (`lib/albumart/matrix.rb`) needs `librgbmatrix.so.1`, GPIO and
+root, so it **only runs on the Pi** (Raspberry Pi 4 + Adafruit RGB Matrix
+Bonnet). Everything else can be exercised on a dev machine:
 
-- **MQTT loop** (main thread, `client.loop_forever()`): `on_message` decodes
-  incoming cover PNGs into a resized `PIL.Image`, and updates `artist`/`title`.
-  A new cover resets `overlay_start`/`overlay_deadline` to trigger the overlay.
-- **animator** (daemon thread): the render loop. Draws plain art when idle;
-  while the overlay is active (`now < overlay_deadline`, or a text card is up) it composites a
-  translucent bottom bar with title/artist at `FPS` and scrolls any line wider
-  than the panel (marquee). Redraws once on each transition, then idles cheaply
-  — it does not repaint every tick. Tracks `last_cover_time` as an idle clock:
-  after `IDLE_DIM_SECONDS` with no new cover it dims the art, after
-  `IDLE_BLANK_SECONDS` it blanks the panel (for always-on longevity); a new
-  cover restores full brightness.
+```bash
+rake test                        # minitest suite, warnings on
+bin/preview /tmp/albumart-preview  # every slide as PNG + 8x copies (needs rmagick)
+ruby -wc lib/albumart/*.rb bin/*   # syntax/warning check
+```
 
-A cover payload of ≤100 bytes (e.g. a mid-track join) is "no art": it becomes a
-black "text card" (`text_card = True`) that keeps the title/artist bar up until
-`IDLE_DIM_SECONDS`, after which the idle branch shows black.
+The scheduler, weather client/parser and clock formatting are pure Ruby and must
+keep loading without `ffi`, `rmagick` or `mqtt` (`test/pure_load_test.rb`
+enforces this). Tests inject the clock and the HTTP call; nothing else is mocked.
+On the Pi, verify by watching `journalctl -u albumart-display`.
 
-## Critical coupling
+## Architecture
 
-`TOPIC_PREFIX` in `display.py` **must exactly match** the `topic` in the
-shairport-sync `mqtt` block (`config/shairport-sync.conf.example`). If they
-diverge, the panel silently shows nothing. All tunables (overlay duration, scroll
-speed, fonts, matrix geometry/GPIO) are constants at the top of `display.py`.
+- `config.rb` — every tunable constant (topics, timings, font, matrix options).
+- `scheduler.rb` — pure. Decides the current slide: after a new cover, art with
+  the title/artist bar for `OVERLAY_SECONDS`, then weather → time → art,
+  `SLIDE_SECONDS` each, skipping slides with nothing to show. The art slide drops
+  out `ART_IDLE_SECONDS` after the last cover; weather and time run all day and
+  are never dimmed or blanked.
+- `weather.rb` — pure. Env settings, Open-Meteo request/parse, WMO code →
+  condition, and a `Fetcher` that refreshes on its own thread and treats data
+  older than an hour as missing.
+- `clock_face.rb`, `scene.rb` — pure value objects for the time text and one frame.
+- `display.rb` — shared track state under one mutex, and the render loop. Redraws
+  only when the scene key changes, or at `FPS` while the bar is visible (marquee).
+- `renderer.rb`, `icons.rb` — RMagick. Decodes covers (JPEG/PNG only), composes
+  each slide, and draws weather icons from primitives without anti-aliasing.
+- `matrix.rb` — `ffi` binding to hzeller's C API, double-buffered with
+  `led_matrix_swap_on_vsync`.
+- `mqtt_listener.rb` — the `mqtt` gem does not auto-reconnect, so this wraps it
+  in a reconnect loop with backoff.
+
+Three threads: render, MQTT, weather. `Thread.abort_on_exception = true`, so any
+unhandled exception exits the process and systemd restarts it. All timing uses
+`CLOCK_MONOTONIC`; wall-clock time is only used for the text on the time slide.
+
+## Critical coupling and landmines
+
+- `TOPIC_PREFIX` in `lib/albumart/config.rb` **must exactly match** the `topic`
+  in the shairport-sync `mqtt` block (`config/shairport-sync.conf.example`). If
+  they diverge, the panel silently shows no art.
+- The FFI structs in `matrix.rb` must mirror `led-matrix-c.h` field for field. In
+  that C API a zero field means "library default", not "off".
+- The matrix drops root to `daemon:daemon` right after init (the library default,
+  matching the old Python binding). Anything that reads root-only files must load
+  before `Albumart::Matrix.new`.
+- rmagick < 7.1 (the Pi's apt 6.0.1) interprets `%` escapes, backslashes and a
+  leading `@file` in text; `Renderer#literal` escapes them. Keep all text going
+  through it.
 
 ## Deploy
 
 `sudo ./setup.sh` (run on the Pi, from the checkout) installs deps, builds the
-matrix bindings, installs the mosquitto config, and generates + enables the
-`albumart-display` systemd service pointing at wherever the repo was cloned.
-shairport-sync is **not** installed by the script — it must be built separately
-with `--with-metadata --with-mqtt-client`. See README.md for the full manual path.
+matrix shared library (`make -C $MATRIX_DIR/lib`), installs the mosquitto config
+and the env template, and generates + enables the `albumart-display` service
+pointing at wherever the repo was cloned. shairport-sync is **not** installed by
+the script — it must be built separately with `--with-metadata
+--with-mqtt-client`. See README.md for the full manual path.
 
 ## Hardware gotcha
 

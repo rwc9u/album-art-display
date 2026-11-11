@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Album art, time and weather on a 64x64 RGB LED matrix. Run as root:
+#   /usr/bin/ruby bin/albumart-display
+
+require_relative "../lib/albumart/config"
+require_relative "../lib/albumart/scheduler"
+require_relative "../lib/albumart/weather"
+require_relative "../lib/albumart/renderer"
+require_relative "../lib/albumart/display"
+require_relative "../lib/albumart/mqtt_listener"
+require_relative "../lib/albumart/matrix"
+
+$stdout.sync = true
+Thread.abort_on_exception = true
+
+# The matrix drops root privileges, so load everything that reads files first.
+require "mqtt/client"
+require "mqtt/packet"
+renderer = Albumart::Renderer.new
+renderer.warm_up
+
+weather =
+  begin
+    Albumart::Weather::Fetcher.new(settings: Albumart::Weather::Settings.from_env(ENV))
+  rescue Albumart::Weather::ConfigError => e
+    Albumart.log("[weather] #{e.message}; weather slide disabled")
+    nil
+  end
+
+matrix = Albumart::Matrix.new(lib_path: ENV.fetch("RGBMATRIX_LIB", Albumart::DEFAULT_MATRIX_LIB))
+at_exit { matrix.close }
+
+display = Albumart::Display.new(
+  renderer:,
+  matrix:,
+  scheduler: Albumart::Scheduler.new(clock: Albumart.monotonic_clock),
+  weather:,
+)
+listener = Albumart::MqttListener.new { |topic, payload| display.handle_message(topic, payload) }
+
+threads = [Thread.new { display.run }, Thread.new { listener.run }]
+threads << Thread.new { weather.run } if weather
+Albumart.log("[display] running")
+threads.each(&:join)

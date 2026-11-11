@@ -4,7 +4,9 @@ After=network-online.target mosquitto.service
 Wants=network-online.target mosquitto.service
 
 [Service]
-ExecStart=/usr/bin/python3 /home/rob/albumart-display/display.py
+Environment=RGBMATRIX_LIB=/home/rob/rpi-rgb-led-matrix/lib/librgbmatrix.so.1
+EnvironmentFile=-/etc/albumart-display.env
+ExecStart=/usr/bin/ruby /home/rob/albumart-display/bin/albumart-display
 Restart=on-failure
 RestartSec=5
 User=root
