@@ -5,6 +5,7 @@
 #   /usr/bin/ruby bin/albumart-display
 
 require_relative "../lib/albumart/config"
+require_relative "../lib/albumart/stats"
 require_relative "../lib/albumart/scheduler"
 require_relative "../lib/albumart/weather"
 require_relative "../lib/albumart/renderer"
@@ -20,14 +21,33 @@ require "mqtt/client"
 require "mqtt/packet"
 renderer = Albumart::Renderer.new
 renderer.warm_up
+stats = Albumart::Stats.new
 
 weather =
   begin
-    Albumart::Weather::Fetcher.new(settings: Albumart::Weather::Settings.from_env(ENV))
+    Albumart::Weather::Fetcher.new(settings: Albumart::Weather::Settings.from_env(ENV), stats:)
   rescue Albumart::Weather::ConfigError => e
     Albumart.log("[weather] #{e.message}; weather slide disabled")
     nil
   end
+
+# Metrics are optional: no failure here may stop the panel, so every error disables them.
+metrics_setting = ENV.fetch("METRICS_PORT", Albumart::METRICS_PORT.to_s)
+metrics_port = Integer(metrics_setting, exception: false)
+metrics =
+  if metrics_port.nil? || metrics_port.zero?
+    Albumart.log("[metrics] METRICS_PORT=#{metrics_setting}; metrics disabled")
+    nil
+  else
+    begin
+      require_relative "../lib/albumart/metrics_server"
+      Albumart::MetricsServer.new(stats:, port: metrics_port)
+    rescue LoadError, StandardError => e
+      Albumart.log("[metrics] #{e.message}; metrics disabled")
+      nil
+    end
+  end
+at_exit { metrics&.shutdown }
 
 matrix = Albumart::Matrix.new(lib_path: ENV.fetch("RGBMATRIX_LIB", Albumart::DEFAULT_MATRIX_LIB))
 at_exit { matrix.close }
@@ -37,10 +57,19 @@ display = Albumart::Display.new(
   matrix:,
   scheduler: Albumart::Scheduler.new(clock: Albumart.monotonic_clock),
   weather:,
+  stats:,
 )
-listener = Albumart::MqttListener.new { |topic, payload| display.handle_message(topic, payload) }
+listener = Albumart::MqttListener.new(stats:) { |topic, payload| display.handle_message(topic, payload) }
 
 threads = [Thread.new { display.run }, Thread.new { listener.run }]
 threads << Thread.new { weather.run } if weather
+if metrics
+  threads << Thread.new do
+    metrics.start
+  rescue StandardError => e
+    Albumart.log("[metrics] #{e.message}; metrics disabled")
+  end
+  Albumart.log("[metrics] listening on #{Albumart::METRICS_BIND}:#{metrics.port}")
+end
 Albumart.log("[display] running")
 threads.each(&:join)

@@ -11,12 +11,13 @@ module Albumart
     IDLE_TICK = 0.1
     EMPTY_COVER_BYTES = 100
 
-    def initialize(renderer:, matrix:, scheduler:, weather:, clock: Albumart.monotonic_clock)
+    def initialize(renderer:, matrix:, scheduler:, weather:, clock: Albumart.monotonic_clock, stats: nil)
       @renderer = renderer
       @matrix = matrix
       @scheduler = scheduler
       @weather = weather
       @clock = clock
+      @stats = stats
       @mutex = Mutex.new
       @art = nil
       @title = ""
@@ -33,11 +34,16 @@ module Albumart
 
     def run
       shown_key = nil
+      shown_slide = nil
       loop do
         scene = current_scene
         if scene.animated? || scene.key != shown_key
           @matrix.show(@renderer.frame(scene))
           shown_key = scene.key
+        end
+        if scene.slide != shown_slide
+          @stats&.slide_shown(scene.slide)
+          shown_slide = scene.slide
         end
         sleep(scene.animated? ? 1.0 / FPS : IDLE_TICK)
       end
@@ -82,6 +88,7 @@ module Albumart
           @scheduler.cover_arrived(text_card: true)
         end
       end
+      @stats&.cover_received
     end
 
     def utf8(payload)

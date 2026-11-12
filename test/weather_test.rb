@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "albumart/weather"
+require "albumart/stats"
 
 class WeatherTest < Minitest::Test
   # Trimmed from a real response for a public Berlin coordinate.
@@ -138,5 +139,19 @@ class WeatherTest < Minitest::Test
     refute_nil fetcher.current
     clock.advance(1)
     assert_nil fetcher.current
+  end
+
+  def test_fetcher_records_successes_and_failures_in_stats
+    clock = FakeClock.new
+    stats = Albumart::Stats.new(clock:)
+    responses = [RESPONSE, nil]
+    http = ->(_uri) { responses.shift || raise(Albumart::Weather::ResponseError, "HTTP 503") }
+    fetcher = Albumart::Weather::Fetcher.new(settings: SETTINGS, clock:, http:, stats:)
+    fetcher.refresh
+    clock.advance(60)
+
+    assert_output("[weather] fetch failed: Albumart::Weather::ResponseError: HTTP 503\n") { fetcher.refresh }
+    assert_equal 60.0, stats.snapshot.weather_age_seconds
+    assert_equal 1, stats.snapshot.weather_fetch_errors_total
   end
 end

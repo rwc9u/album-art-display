@@ -20,9 +20,10 @@ committed.
 
 `display.py` is the legacy Python implementation, kept untouched as a rollback.
 
-Runtime: Ruby 3.3 from apt (`/usr/bin/ruby`), apt `ruby-ffi` and `ruby-rmagick`
-(6.0.1 on trixie), and the `mqtt` gem installed with `gem install`. No Bundler
-at runtime; the `Gemfile` is for local development only.
+Runtime: Ruby 3.3 from apt (`/usr/bin/ruby`), apt `ruby-ffi`, `ruby-rmagick`
+(6.0.1 on trixie) and `ruby-webrick`, and the `mqtt` and `prometheus-client`
+gems installed with `gem install`. No Bundler at runtime; the `Gemfile` is for
+local development only.
 
 ## What runs where
 
@@ -36,10 +37,11 @@ bin/preview /tmp/albumart-preview  # every slide as PNG + 8x copies (needs rmagi
 ruby -wc lib/albumart/*.rb bin/*   # syntax/warning check
 ```
 
-The scheduler, weather client/parser and clock formatting are pure Ruby and must
-keep loading without `ffi`, `rmagick` or `mqtt` (`test/pure_load_test.rb`
-enforces this). Tests inject the clock and the HTTP call; nothing else is mocked.
-On the Pi, verify by watching `journalctl -u albumart-display`.
+The scheduler, weather client/parser, stats and clock formatting are pure Ruby
+and must keep loading without `ffi`, `rmagick`, `mqtt`, `webrick` or
+`prometheus-client` (`test/pure_load_test.rb` enforces this). Tests inject the
+clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
+`journalctl -u albumart-display`.
 
 ## Architecture
 
@@ -61,9 +63,16 @@ On the Pi, verify by watching `journalctl -u albumart-display`.
   `led_matrix_swap_on_vsync`.
 - `mqtt_listener.rb` — the `mqtt` gem does not auto-reconnect, so this wraps it
   in a reconnect loop with backoff.
+- `stats.rb` — pure. Thread-safe counters and monotonic last-seen times, fed by
+  `Display`, `MqttListener` and `Weather::Fetcher` through an optional `stats:`
+  keyword; `#snapshot` computes ages at call time.
+- `metrics_server.rb` — the only file that loads `webrick` and
+  `prometheus-client`. Serves `GET /metrics` on `METRICS_PORT` (9101), building
+  a fresh registry from `stats.snapshot` on every scrape.
 
-Three threads: render, MQTT, weather. `Thread.abort_on_exception = true`, so any
-unhandled exception exits the process and systemd restarts it. All timing uses
+Four threads: render, MQTT, weather, metrics.
+`Thread.abort_on_exception = true`, so any unhandled exception exits the process
+and systemd restarts it. All timing uses
 `CLOCK_MONOTONIC`; wall-clock time is only used for the text on the time slide.
 
 ## Critical coupling and landmines
@@ -76,6 +85,10 @@ unhandled exception exits the process and systemd restarts it. All timing uses
 - The matrix drops root to `daemon:daemon` right after init (the library default,
   matching the old Python binding). Anything that reads root-only files must load
   before `Albumart::Matrix.new`.
+- A metrics failure must never exit the process (`Thread.abort_on_exception` is
+  on). `bin/albumart-display` rescues load and bind errors (WEBrick binds in
+  `MetricsServer.new`) and anything raised by `#start`, logs
+  `[metrics] ...; metrics disabled` and keeps the panel running.
 - rmagick < 7.1 (the Pi's apt 6.0.1) interprets `%` escapes, backslashes and a
   leading `@file` in text; `Renderer#literal` escapes them. Keep all text going
   through it.

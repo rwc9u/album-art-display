@@ -73,8 +73,10 @@ there, but since Albumart discards audio (null sink) that's harmless.
 
 - `mosquitto` MQTT broker (with `persistence true` so retained art survives reboots)
 - `shairport-sync` built with `--with-metadata` and `--with-mqtt-client`
-- Ruby 3.3 from apt (`ruby`, `ruby-dev`), plus `ruby-ffi`, `ruby-rmagick` and the
-  `mqtt` gem (`gem install mqtt`; there is no apt package). No Bundler at runtime.
+- Ruby 3.3 from apt (`ruby`, `ruby-dev`), plus `ruby-ffi`, `ruby-rmagick`,
+  `ruby-webrick` and the `mqtt` and `prometheus-client` gems
+  (`gem install mqtt prometheus-client`; `mqtt` has no apt package). No
+  Bundler at runtime.
 - `librgbmatrix.so.1`, built from the hzeller checkout with `make -C lib`
 - `fonts-dejavu-core` (for all panel text)
 
@@ -83,6 +85,7 @@ there, but since Albumart discards audio (null sink) that's harmless.
 | `paho-mqtt` | [`mqtt`](https://rubygems.org/gems/mqtt) gem (0.7.x, pure Ruby). It does not reconnect on its own; `lib/albumart/mqtt_listener.rb` does. |
 | `Pillow` | `rmagick` (apt `ruby-rmagick` 6.0.1 on Debian trixie; the code also runs on 7.x) |
 | `rgbmatrix` (hzeller Python binding) | No Ruby gem exists. `lib/albumart/matrix.rb` binds hzeller's C API (`include/led-matrix-c.h`) with `ffi`. |
+| — (new, no Python equivalent) | `webrick` (apt `ruby-webrick`) serves `/metrics`; [`prometheus-client`](https://rubygems.org/gems/prometheus-client) (5.x) renders the text format. |
 
 ## Config
 
@@ -151,8 +154,8 @@ not installed by the script — see below.
 ```bash
 # MQTT broker, Ruby, build tools
 sudo apt-get install -y mosquitto mosquitto-clients ruby ruby-dev ruby-ffi \
-  ruby-rmagick build-essential git fonts-dejavu-core
-sudo gem install --no-document mqtt
+  ruby-rmagick ruby-webrick build-essential git fonts-dejavu-core
+sudo gem install --no-document mqtt prometheus-client
 
 # Shared library for the matrix (from the rpi-rgb-led-matrix checkout)
 make -C rpi-rgb-led-matrix/lib
@@ -188,7 +191,38 @@ Edit the constants in `lib/albumart/config.rb`:
   for lines that are wider than the panel
 - `MATRIX_OPTIONS` / `GPIO_SLOWDOWN` — matrix geometry and GPIO options
 
+- `METRICS_PORT` / `METRICS_BIND` — the metrics endpoint (see [Metrics](#metrics))
+
 `RGBMATRIX_LIB` (environment) overrides the path to `librgbmatrix.so.1`.
+
+## Metrics
+
+The display serves Prometheus metrics at `http://albumart.local:9101/metrics`
+(plain HTTP, no auth; trusted LAN only):
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `albumart_uptime_seconds` | gauge | Seconds since the display started |
+| `albumart_last_cover_age_seconds` | gauge | Seconds since the last cover (absent until one arrives) |
+| `albumart_covers_total` | counter | Covers received, including empty ones shown as a text card |
+| `albumart_mqtt_connected` | gauge | 1 while connected to the broker, else 0 |
+| `albumart_mqtt_connects_total` | counter | Broker connections made |
+| `albumart_mqtt_disconnects_total` | counter | Disconnects, including failed connection attempts |
+| `albumart_weather_age_seconds` | gauge | Seconds since the last successful weather fetch (absent until one succeeds) |
+| `albumart_weather_fetch_errors_total` | counter | Failed weather fetches |
+| `albumart_current_slide{slide="weather\|time\|art"}` | gauge | 1 for the slide on the panel, 0 for the others |
+
+Nothing about the track or the location is exposed. Set `METRICS_PORT` in
+`/etc/albumart-display.env` to change the port, or `METRICS_PORT=off` to disable
+the endpoint. If the port is taken or the gems are missing, the display logs
+`[metrics] ...; metrics disabled` and keeps running.
+
+```yaml
+scrape_configs:
+  - job_name: albumart
+    static_configs:
+      - targets: ["albumart.local:9101"]
+```
 
 ## Development
 
@@ -197,12 +231,14 @@ works on the device.
 
 ```bash
 gem install ffi rmagick mqtt   # rmagick needs ImageMagick (e.g. brew install imagemagick)
+gem install prometheus-client webrick
 rake test                      # minitest, with warnings on
 bin/preview /tmp/albumart-preview
 ```
 
-The scheduler, weather and clock code load without `ffi`, `rmagick` or `mqtt`,
-so `rake test` needs none of them. `bin/preview` renders every slide (each
+The scheduler, weather, stats and clock code load without `ffi`, `rmagick` or
+`mqtt`, so `rake test` needs none of them; the metrics server test needs
+`prometheus-client` and `webrick`. `bin/preview` renders every slide (each
 weather condition by day and night, the time, art with the bar, a text card) to
 PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
 Arial Narrow Bold, so text widths differ slightly from the Pi's DejaVu.
