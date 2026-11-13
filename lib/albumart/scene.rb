@@ -13,6 +13,7 @@ module Albumart
       when :art then [slide, art.object_id, bar]
       when :time then [slide, clock_face]
       when :weather then [slide, weather]
+      when :forecast then [slide, weather.forecast]
       end
     end
   end
