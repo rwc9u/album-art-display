@@ -113,6 +113,9 @@ no RTC.
 - rmagick < 7.1 (the Pi's apt 6.0.1) interprets `%` escapes, backslashes and a
   leading `@file` in text; `Renderer#literal` escapes them. Keep all text going
   through it.
+- `annotate`'s vertical offset and type metrics differ between the Pi's
+  ImageMagick 6 and a dev machine, so vertical text placement must go through
+  the ink-measuring helper (`Renderer#ink_rows`), not font metrics.
 
 ## Deploy
 
