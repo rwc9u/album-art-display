@@ -1,22 +1,27 @@
 # album-art-display
 
 Show the album art of whatever's playing over AirPlay on a 64×64 RGB LED matrix,
-rotating with the time and the local weather.
+rotating with the time, the local weather and Copper Mountain's snow report.
 
 A small Ruby MQTT client that subscribes to cover art published by
 [shairport-sync](https://github.com/mikebrady/shairport-sync) and renders it to
 an [hzeller/rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix)
 panel. After each track change it shows the art with the title and artist in a
-bar across the bottom for 10 seconds, then the panel rotates through four
-slides, 5 seconds each: **weather, 3-day forecast, time, album art**. The
-forecast shows the next three days (weekday, condition, high and low). Lines too
+bar across the bottom for 10 seconds, then the panel rotates through five
+slides, 5 seconds each: **weather, 3-day forecast, snow report, time, album
+art**. The forecast shows the next three days (weekday, condition, high and
+low); the snow report shows Copper Mountain's base depth, the share of trails
+open, and the mountain's current weather with today's high and low. Lines too
 long to fit scroll horizontally.
 
 - No cover yet, or no new cover for an hour: the art slide drops out and the
-  panel rotates weather, forecast and time. The next cover brings it back.
+  panel rotates weather, forecast, snow report and time. The next cover brings
+  it back.
 - No weather configured, or no fresh data: the weather and forecast slides are
   skipped.
 - Forecast data missing or malformed: only the forecast slide is skipped.
+- No fresh snow report, or the resort is out of season: the snow slide is
+  skipped (see [Snow report](#snow-report)).
 - A track with no art (e.g. after joining mid-track) shows a "text card": the
   title/artist bar on black, in the art slide's place.
 
@@ -34,7 +39,8 @@ shairport-sync  ──publishes──▶  MQTT broker (mosquitto)
                                         ▼
                             bin/albumart-display  ──▶  64×64 RGB LED matrix
                                         ▲
-                     api.open-meteo.com (weather, every 10 min)
+     api.open-meteo.com (weather + Copper's weather, every 10 min)
+     api.coppercolorado.com (snow report, hourly)
 ```
 
 Audio is not played on the Pi — shairport-sync uses the ALSA `null` sink, so the
@@ -135,6 +141,34 @@ Without `WEATHER_LAT`/`WEATHER_LON` the service logs one line and skips the
 weather and forecast slides. Data refreshes every 10 minutes (1 minute after a
 failure) and is treated as missing once it is more than an hour old.
 
+### Snow report
+
+The snow slide needs no configuration. It reads two keyless JSON feeds from
+Copper Mountain's website:
+
+- `https://api.coppercolorado.com/api/v1/dor/drupal/snow-reports` — base depth
+  (in inches) from the newest daily report
+- `https://api.coppercolorado.com/api/v1/dor/drupal/trails` — trail status
+
+These feeds are undocumented and may change or disappear without notice. A
+response in an unexpected shape is logged as `[snow] fetch failed: ...` and the
+slide is skipped; it never stops the panel.
+
+"Open" is a share of trail **count**, not acreage: of the alpine trails marked
+`include` for the `winter` or `all` season, the percentage whose status is
+`open`, rounded (a single open trail shows at least 1%). The feeds refresh
+hourly (10 minutes after a failure), and the slide is skipped once the last
+good fetch is more than 3 hours old or the newest report is more than 3 days
+old by the Pi's clock, which hides it off-season.
+
+The slide has four rows: the resort name with a snowboard icon, the base depth
+with its BASE caption, the mountain's weather icon followed by today's high and
+low, and the share of trails open. The weather is the current condition at
+Copper Mountain (39.50, -106.15, fixed in `lib/albumart/config.rb`), fetched
+from Open-Meteo by a second weather fetcher on the same 10-minute schedule as
+the local weather. If it is unavailable that row is dropped and the other three
+are spaced out to fill the panel.
+
 ## Install
 
 One-command bootstrap (from the repo checkout):
@@ -189,6 +223,8 @@ Edit the constants in `lib/albumart/config.rb`:
   new cover. A cover only arrives on a track change, so keep it longer than a
   typical track.
 - `TIME_24H` — 24-hour clock instead of `h:MM AM/PM`
+- `SNOW_*` — snow report feeds, refresh timings, staleness limits, the resort
+  label and the coordinates for its weather icon
 - `FONT_PATH` — TrueType font used for all text
 - `SCROLL_SPEED` / `SCROLL_START_DELAY` / `SCROLL_GAP` / `FPS` — marquee tuning
   for lines that are wider than the panel
@@ -212,8 +248,10 @@ The display serves Prometheus metrics at `http://albumart.local:9101/metrics`
 | `albumart_mqtt_connects_total` | counter | Broker connections made |
 | `albumart_mqtt_disconnects_total` | counter | Disconnects, including failed connection attempts |
 | `albumart_weather_age_seconds` | gauge | Seconds since the last successful weather fetch (absent until one succeeds) |
-| `albumart_weather_fetch_errors_total` | counter | Failed weather fetches |
-| `albumart_current_slide{slide="weather\|time\|art"}` | gauge | 1 for the slide on the panel, 0 for the others |
+| `albumart_weather_fetch_errors_total` | counter | Failed weather fetches (local weather only) |
+| `albumart_snow_age_seconds` | gauge | Seconds since the last successful snow report fetch (absent until one succeeds) |
+| `albumart_snow_fetch_errors_total` | counter | Failed snow report fetches |
+| `albumart_current_slide{slide="weather\|forecast\|snow\|time\|art"}` | gauge | 1 for the slide on the panel, 0 for the others |
 
 Nothing about the track or the location is exposed. Set `METRICS_PORT` in
 `/etc/albumart-display.env` to change the port, or `METRICS_PORT=off` to disable
@@ -239,12 +277,13 @@ rake test                      # minitest, with warnings on
 bin/preview /tmp/albumart-preview
 ```
 
-The scheduler, weather, stats and clock code load without `ffi`, `rmagick` or
-`mqtt`, so `rake test` needs none of them; the metrics server test needs
-`prometheus-client` and `webrick`. `bin/preview` renders every slide (each
+The scheduler, weather, snow report, stats and clock code load without `ffi`,
+`rmagick` or `mqtt`, so `rake test` needs none of them; the metrics server test
+needs `prometheus-client` and `webrick`. `bin/preview` renders every slide (each
 weather condition by day and night, the forecast with every condition and the
-widest numbers, the time, art with the bar, a text card) to
-PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
+widest numbers, the snow report with and without its weather icon and with the
+widest base, percent open and high/low, the time, art with the bar, a text
+card) to PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
 Arial Narrow Bold, so text widths differ slightly from the Pi's DejaVu.
 
 ## Rolling back

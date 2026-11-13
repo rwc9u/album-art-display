@@ -35,7 +35,7 @@ module Albumart
       @font = FONT_CANDIDATES.find { |path| File.exist?(path) }
       @scratch = Magick::Image.new(1, 1)
       @draws = {}
-      @widths = {}
+      @metrics = {}
       @barred = nil
     end
 
@@ -70,6 +70,7 @@ module Albumart
       when :time then time_slide(scene.clock_face)
       when :weather then weather_slide(scene.weather)
       when :forecast then forecast_slide(scene.weather)
+      when :snow then snow_slide(scene.snow, scene.mountain_weather)
       end
     end
 
@@ -155,6 +156,54 @@ module Albumart
       image
     end
 
+    def snow_slide(reading, weather)
+      image = blank
+      board_y, baseline, open_y = weather ? [0, 33, 54] : [6, 43, 50]
+      snow_header(image, board_y)
+      base_depth(image, "#{reading.base_depth}\"", baseline)
+      mountain_weather_row(image, weather, 36) if weather
+      open = "#{reading.percent_open}% OPEN"
+      centered(image, open, fitted_size(open, 10, WIDTH - 6), open_y, DATE_COLOR)
+      image
+    end
+
+    def snow_header(image, y)
+      board_x = WIDTH - Icons::SMALL_SIZE - 1
+      image.composite!(Icons.snowboard_image(size: Icons::SMALL_SIZE), board_x, y, Magick::OverCompositeOp)
+      size = fitted_size(SNOW_RESORT_LABEL, 9, board_x - 4)
+      annotate(image, SNOW_RESORT_LABEL, size, 2, y + icon_centred(SNOW_RESORT_LABEL, size), LIGHT_GREY)
+    end
+
+    # Annotate puts the ink top at y, so sharing a baseline means offsetting each text by its height.
+    def base_depth(image, depth, baseline)
+      gap = 3
+      caption_width = text_width("BASE", 8)
+      size = fitted_size(depth, 18, WIDTH - 4 - gap - caption_width)
+      x = (WIDTH - text_width(depth, size) - gap - caption_width) / 2.0
+      annotate(image, depth, size, x, baseline - text_height(depth, size), WHITE)
+      annotate(image, "BASE", 8, x + text_width(depth, size) + gap, baseline - text_height("BASE", 8), GREY)
+    end
+
+    def mountain_weather_row(image, weather, y)
+      high = weather.high.to_s
+      low = weather.low.to_s
+      gap = 4
+      size = 10.downto(MIN_FIT_SIZE).find do |s|
+        Icons::SMALL_SIZE + gap + line_width(high, low, gap, s) <= WIDTH - 4
+      end || MIN_FIT_SIZE
+      x = ((WIDTH - Icons::SMALL_SIZE - gap - line_width(high, low, gap, size)) / 2.0).round
+      icon = Icons.image(weather.condition, day: weather.day, size: Icons::SMALL_SIZE)
+      image.composite!(icon, x, y, Magick::OverCompositeOp)
+      text_y = y + icon_centred(high + low, size)
+      text_x = x + Icons::SMALL_SIZE + gap
+      annotate(image, high, size, text_x, text_y, HIGH_COLOR)
+      annotate(image, low, size, text_x + text_width(high, size) + gap, text_y, LOW_COLOR)
+    end
+
+    def icon_centred(text, size)
+      ((Icons::SMALL_SIZE - text_height(text, size)) / 2.0).round
+    end
+
     # One size per row so the three columns match; may go below MIN_FIT_SIZE for the Pi's wider font.
     def column_size(texts, largest)
       largest.downto(FORECAST_MIN_SIZE).find do |size|
@@ -191,8 +240,16 @@ module Albumart
     end
 
     def text_width(text, size)
-      @widths.clear if @widths.size > WIDTH_CACHE_LIMIT
-      @widths[[text, size]] ||= text_draw(size, WHITE).get_type_metrics(@scratch, literal(text)).width
+      type_metrics(text, size).width
+    end
+
+    def text_height(text, size)
+      type_metrics(text, size).bounds.y2.round
+    end
+
+    def type_metrics(text, size)
+      @metrics.clear if @metrics.size > WIDTH_CACHE_LIMIT
+      @metrics[[text, size]] ||= text_draw(size, WHITE).get_type_metrics(@scratch, literal(text))
     end
 
     def text_draw(size, color)

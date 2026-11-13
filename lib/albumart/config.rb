@@ -12,7 +12,7 @@ module Albumart
   HEIGHT = 64
 
   OVERLAY_SECONDS = 10        # how long the title/artist bar stays after a track change
-  SLIDE_SECONDS = 5           # each slide's turn in the weather -> forecast -> time -> art rotation
+  SLIDE_SECONDS = 5           # each slide's turn in the weather -> forecast -> snow -> time -> art rotation
   ART_IDLE_SECONDS = 60 * 60  # art leaves the rotation after this long with no new cover
   SCROLL_SPEED = 16.0         # pixels/second for text too wide to fit
   SCROLL_START_DELAY = 1.0    # seconds to hold the start of a line before scrolling
@@ -24,6 +24,16 @@ module Albumart
   WEATHER_REFRESH_SECONDS = 10 * 60
   WEATHER_RETRY_SECONDS = 60
   WEATHER_MAX_AGE_SECONDS = 60 * 60
+
+  SNOW_REPORTS_URL = "https://api.coppercolorado.com/api/v1/dor/drupal/snow-reports"
+  SNOW_TRAILS_URL = "https://api.coppercolorado.com/api/v1/dor/drupal/trails"
+  SNOW_REFRESH_SECONDS = 60 * 60
+  SNOW_RETRY_SECONDS = 10 * 60
+  SNOW_MAX_AGE_SECONDS = 3 * 60 * 60
+  SNOW_REPORT_STALE_SECONDS = 3 * 24 * 60 * 60 # an older report means the resort is out of season
+  SNOW_RESORT_LABEL = "COPPER"
+  SNOW_LATITUDE = 39.50       # Copper Mountain, for the snow slide's weather icon
+  SNOW_LONGITUDE = -106.15
 
   METRICS_PORT = 9101         # GET /metrics; METRICS_PORT=off in the environment disables it
   METRICS_BIND = "0.0.0.0"

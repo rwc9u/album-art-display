@@ -35,6 +35,9 @@ class MetricsServerTest < Minitest::Test
     @stats.mqtt_connected
     @stats.weather_fetched
     @stats.weather_fetch_failed
+    @stats.snow_fetched
+    @stats.snow_fetch_failed
+    @stats.snow_fetch_failed
     @stats.slide_shown(:time)
     @clock.advance(7)
 
@@ -56,8 +59,14 @@ class MetricsServerTest < Minitest::Test
     assert_includes lines, "albumart_weather_age_seconds 7.0"
     assert_includes lines, "# TYPE albumart_weather_fetch_errors_total counter"
     assert_includes lines, "albumart_weather_fetch_errors_total 1.0"
+    assert_includes lines, "# TYPE albumart_snow_age_seconds gauge"
+    assert_includes lines, "albumart_snow_age_seconds 7.0"
+    assert_includes lines, "# TYPE albumart_snow_fetch_errors_total counter"
+    assert_includes lines, "albumart_snow_fetch_errors_total 2.0"
     assert_includes lines, "# TYPE albumart_current_slide gauge"
     assert_includes lines, 'albumart_current_slide{slide="weather"} 0.0'
+    assert_includes lines, 'albumart_current_slide{slide="forecast"} 0.0'
+    assert_includes lines, 'albumart_current_slide{slide="snow"} 0.0'
     assert_includes lines, 'albumart_current_slide{slide="time"} 1.0'
     assert_includes lines, 'albumart_current_slide{slide="art"} 0.0'
   end
@@ -67,6 +76,7 @@ class MetricsServerTest < Minitest::Test
 
     refute_includes body, "albumart_last_cover_age_seconds"
     refute_includes body, "albumart_weather_age_seconds"
+    refute_includes body, "albumart_snow_age_seconds"
     assert_includes body.lines(chomp: true), "albumart_covers_total 0.0"
     assert_includes body.lines(chomp: true), "albumart_mqtt_connected 0.0"
   end

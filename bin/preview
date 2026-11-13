@@ -9,6 +9,7 @@ require_relative "../lib/albumart/renderer"
 require_relative "../lib/albumart/scene"
 require_relative "../lib/albumart/clock_face"
 require_relative "../lib/albumart/weather"
+require_relative "../lib/albumart/snow_report"
 
 out_dir = ARGV.fetch(0) { abort "usage: bin/preview OUTPUT_DIR" }
 FileUtils.mkdir_p(out_dir)
@@ -22,7 +23,8 @@ end
 
 scene = lambda do |slide, **fields|
   Albumart::Scene.new(
-    slide:, art: nil, title: "", artist: "", bar: false, elapsed: 0.0, weather: nil, clock_face: nil, **fields,
+    slide:, art: nil, title: "", artist: "", bar: false, elapsed: 0.0, weather: nil, clock_face: nil, snow: nil,
+    mountain_weather: nil, **fields,
   )
 end
 
@@ -90,5 +92,19 @@ save.call(
   "forecast-widest",
   forecast_scene.call([["WED", :snow, 108, -18], ["THU", :thunderstorm, 104, -9], ["FRI", :fog, 100, -11]]),
 )
+
+snow_scene = lambda do |base_depth, percent_open, condition = nil, day: true, high: 25, low: 8|
+  snow = Albumart::SnowReport::Reading.new(base_depth:, percent_open:, reported_at: 0, fetched_at: 0.0)
+  mountain_weather = condition && Albumart::Weather::Reading.new(
+    temperature: 20, condition:, day:, high:, low:, forecast: [], fetched_at: 0.0,
+  )
+  scene.call(:snow, snow:, mountain_weather:)
+end
+save.call("snow", snow_scene.call(18, 2, :snow))
+save.call("snow-clear-night", snow_scene.call(18, 2, :clear, day: false, high: 31, low: 12))
+save.call("snow-no-weather", snow_scene.call(18, 2))
+save.call("snow-widest", snow_scene.call(120, 100, :partly_cloudy, high: 100, low: -18))
+save.call("snow-widest-no-weather", snow_scene.call(120, 100))
+save.call("snow-zero", snow_scene.call(0, 0, :cloudy, high: 2, low: -9))
 
 puts "wrote previews to #{out_dir} (#{Magick::Version}, font: #{renderer.font || 'ImageMagick default'})"

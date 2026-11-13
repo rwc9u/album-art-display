@@ -2,7 +2,9 @@
 
 module Albumart
   # Everything the renderer needs for one frame.
-  Scene = Data.define(:slide, :art, :title, :artist, :bar, :elapsed, :weather, :clock_face) do
+  Scene = Data.define(
+    :slide, :art, :title, :artist, :bar, :elapsed, :weather, :clock_face, :snow, :mountain_weather,
+  ) do
     def animated?
       bar
     end
@@ -14,6 +16,11 @@ module Albumart
       when :time then [slide, clock_face]
       when :weather then [slide, weather]
       when :forecast then [slide, weather.forecast]
+      when :snow
+        [
+          slide, snow.base_depth, snow.percent_open,
+          mountain_weather&.condition, mountain_weather&.day, mountain_weather&.high, mountain_weather&.low,
+        ]
       end
     end
   end

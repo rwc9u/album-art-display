@@ -16,6 +16,9 @@ module Albumart
     RAIN = "#3C8CFF"
     SNOW = "#FFFFFF"
     FOG = "#A0A0A0"
+    BOARD = "#FF5A28"
+    BINDING = "#5A1A0A"
+    BOARD_HALF_WIDTH = 3
     BACKGROUND = "#000000"
 
     def self.image(condition, day:, size: SIZE)
@@ -108,5 +111,44 @@ module Albumart
     def self.disc(draw, cx, cy, radius)
       draw.circle(cx, cy, cx + radius, cy)
     end
+
+    # Not a weather condition, so it stays out of #image's dispatch.
+    def self.snowboard_image(size: SIZE)
+      image = Magick::Image.new(size, size) { |info| info.background_color = BACKGROUND }
+      draw = Magick::Draw.new
+      draw.stroke_antialias(false)
+      draw.stroke("none")
+      draw.scale(size.fdiv(SIZE), size.fdiv(SIZE)) unless size == SIZE
+      board(draw)
+      draw.draw(image)
+      image
+    end
+
+    # A board on the diagonal from tail (lower left) to tip (upper right).
+    def self.board(draw)
+      tail = [5.0, 23.0]
+      tip = [23.0, 5.0]
+      draw.fill(BOARD)
+      draw.polygon(*strip(tail, tip, 0.0, 1.0, BOARD_HALF_WIDTH))
+      disc(draw, *tail.map(&:round), BOARD_HALF_WIDTH)
+      disc(draw, *tip.map(&:round), BOARD_HALF_WIDTH)
+      draw.fill(BINDING)
+      [0.32, 0.68].each { |at| draw.polygon(*strip(tail, tip, at - 0.05, at + 0.05, BOARD_HALF_WIDTH - 1)) }
+      draw.fill(SNOW)
+      [[4, 6], [10, 2], [23, 20], [18, 25]].each { |x, y| draw.rectangle(x, y, x + 1, y + 1) }
+    end
+
+    # Corners of the band between fractions `from` and `to` along the axis, `half_width` either side.
+    def self.strip(tail, tip, from, to, half_width)
+      dx = tip[0] - tail[0]
+      dy = tip[1] - tail[1]
+      length = Math.hypot(dx, dy)
+      nx = -dy / length * half_width
+      ny = dx / length * half_width
+      [from, to, to, from].zip([1, 1, -1, -1]).flat_map do |at, side|
+        [(tail[0] + (dx * at) + (side * nx)).round, (tail[1] + (dy * at) + (side * ny)).round]
+      end
+    end
+    private_class_method :board, :strip
   end
 end

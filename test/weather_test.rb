@@ -186,6 +186,15 @@ class WeatherTest < Minitest::Test
     assert_equal 45, fetcher.current.temperature
   end
 
+  def test_fetcher_names_itself_in_the_failure_log
+    http = ->(_uri) { raise Albumart::Weather::ResponseError, "HTTP 503" }
+    fetcher = Albumart::Weather::Fetcher.new(settings: SETTINGS, clock: FakeClock.new, http:, label: "mountain weather")
+
+    assert_output("[mountain weather] fetch failed: Albumart::Weather::ResponseError: HTTP 503\n") do
+      refute fetcher.refresh
+    end
+  end
+
   def test_fetcher_treats_old_data_as_missing
     clock = FakeClock.new
     fetcher = Albumart::Weather::Fetcher.new(settings: SETTINGS, clock:, http: ->(_uri) { RESPONSE })
