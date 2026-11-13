@@ -6,7 +6,8 @@ Wants=network-online.target mosquitto.service
 [Service]
 Environment=RGBMATRIX_LIB=/home/rob/rpi-rgb-led-matrix/lib/librgbmatrix.so.1
 EnvironmentFile=-/etc/albumart-display.env
-ExecStart=/usr/bin/ruby /home/rob/albumart-display/bin/albumart-display
+WorkingDirectory=/home/rob/albumart-display
+ExecStart=/usr/bin/bundle exec ruby bin/albumart-display
 Restart=on-failure
 RestartSec=5
 User=root

@@ -2,9 +2,10 @@
 #
 # Bootstrap the album-art-display pipeline on a Raspberry Pi (Raspberry Pi OS / Debian).
 #
-# Installs the MQTT broker and Ruby dependencies, builds the LED-matrix shared
-# library, installs the broker config + display service, and enables
-# everything to start on boot.
+# Installs the MQTT broker and Ruby dependencies (gems via Bundler from
+# Gemfile.lock), builds the LED-matrix shared library, installs the broker
+# config + display service, and enables everything to start on boot. Re-run it
+# after pulling new code to apply updates.
 #
 # Usage (run from the repo checkout):
 #     sudo ./setup.sh
@@ -32,35 +33,29 @@ RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6)"
 MATRIX_DIR="${MATRIX_DIR:-$RUN_HOME/rpi-rgb-led-matrix}"
 MATRIX_LIB="$MATRIX_DIR/lib/librgbmatrix.so.1"
 ENV_FILE=/etc/albumart-display.env
+# Outside the checkout: /home is unreadable once the matrix drops root, and a
+# gem that requires a file lazily would then fail to load.
+BUNDLE_DIR="${BUNDLE_DIR:-/var/lib/albumart-display/bundle}"
 
 echo "==> Installing packages (broker, Ruby, build tools)"
 apt-get update -qq
 apt-get install -y \
   mosquitto mosquitto-clients \
-  ruby ruby-dev ruby-ffi ruby-rmagick \
-  build-essential git \
+  ruby ruby-dev bundler \
+  build-essential git pkg-config libmagickwand-dev libssl-dev \
   fonts-dejavu-core
 
-echo "==> Ruby MQTT client"
-if gem list --installed --exact mqtt >/dev/null; then
-  echo "    mqtt gem already installed — skipping"
-else
-  gem install --no-document mqtt
-fi
-
-echo "==> Ruby Prometheus client"
-if gem list --installed --exact prometheus-client >/dev/null; then
-  echo "    prometheus-client gem already installed — skipping"
-else
-  gem install --no-document prometheus-client
-fi
-
-echo "==> Falcon HTTP server (metrics)"
-if gem list --installed --exact falcon >/dev/null; then
-  echo "    falcon gem already installed — skipping"
-else
-  gem install --no-document falcon
-fi
+echo "==> Ruby gems (Bundler, into $BUNDLE_DIR)"
+install -d -o "$RUN_USER" -g "$(id -gn "$RUN_USER")" -m 0755 "$BUNDLE_DIR"
+(
+  cd "$REPO_DIR"
+  sudo -H -u "$RUN_USER" bundle config set --local deployment true
+  sudo -H -u "$RUN_USER" bundle config set --local path "$BUNDLE_DIR"
+  sudo -H -u "$RUN_USER" bundle config set --local without development
+  # Use apt's Bundler rather than self-installing the lockfile's BUNDLED WITH.
+  sudo -H -u "$RUN_USER" bundle config set --local version system
+  sudo -H -u "$RUN_USER" bundle install
+)
 
 echo "==> LED-matrix shared library"
 if [ ! -d "$MATRIX_DIR" ]; then
@@ -83,8 +78,9 @@ else
   echo "    installed a template; set WEATHER_LAT/WEATHER_LON there to enable the weather slide"
 fi
 
-echo "==> album-art-display service (runs $REPO_DIR/bin/albumart-display)"
-sed -e "s|^ExecStart=.*|ExecStart=/usr/bin/ruby $REPO_DIR/bin/albumart-display|" \
+echo "==> album-art-display service (runs bundle exec ruby bin/albumart-display in $REPO_DIR)"
+sed -e "s|^WorkingDirectory=.*|WorkingDirectory=$REPO_DIR|" \
+  -e "s|^ExecStart=.*|ExecStart=/usr/bin/bundle exec ruby bin/albumart-display|" \
   -e "s|^Environment=RGBMATRIX_LIB=.*|Environment=RGBMATRIX_LIB=$MATRIX_LIB|" \
   "$REPO_DIR/albumart-display.service" > /etc/systemd/system/albumart-display.service
 systemctl daemon-reload

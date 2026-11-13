@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # Album art, time, weather and Copper Mountain's snow report on a 64x64 RGB LED matrix. Run as root:
-#   /usr/bin/ruby bin/albumart-display
+#   bundle exec ruby bin/albumart-display
 
 require_relative "../lib/albumart/config"
 require_relative "../lib/albumart/stats"
