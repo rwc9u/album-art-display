@@ -136,10 +136,11 @@ module Albumart
         Net::HTTPBadResponse,
       ].freeze
 
-      def initialize(settings:, clock: Albumart.monotonic_clock, http: Weather.method(:http_get))
+      def initialize(settings:, clock: Albumart.monotonic_clock, http: Weather.method(:http_get), stats: nil)
         @uri = Weather.request_uri(settings)
         @clock = clock
         @http = http
+        @stats = stats
         @reading = nil
         @mutex = Mutex.new
       end
@@ -153,9 +154,11 @@ module Albumart
       def refresh
         reading = Weather.parse(@http.call(@uri), fetched_at: @clock.call)
         @mutex.synchronize { @reading = reading }
+        @stats&.weather_fetched
         true
       rescue *FAILURES => e
         Albumart.log("[weather] fetch failed: #{e.class}: #{e.message}")
+        @stats&.weather_fetch_failed
         false
       end
 

@@ -14,9 +14,10 @@ module Albumart
     # MQTT::Exception derives from ::Exception, so it must be named explicitly.
     CONNECTION_ERRORS = [MQTT::Exception, SystemCallError, IOError, SocketError, Timeout::Error].freeze
 
-    def initialize(host: BROKER, port: PORT, &on_message)
+    def initialize(host: BROKER, port: PORT, stats: nil, &on_message)
       @host = host
       @port = port
+      @stats = stats
       @on_message = on_message
     end
 
@@ -25,11 +26,13 @@ module Albumart
       loop do
         MQTT::Client.connect(host: @host, port: @port, keep_alive: KEEP_ALIVE_SECONDS) do |client|
           Albumart.log("[mqtt] connected")
+          @stats&.mqtt_connected
           retry_in = FIRST_RETRY_SECONDS
           client.subscribe(*TOPICS)
           client.get { |topic, payload| @on_message.call(topic, payload) }
         end
       rescue *CONNECTION_ERRORS => e
+        @stats&.mqtt_disconnected
         Albumart.log("[mqtt] disconnected (#{e.class}: #{e.message}); retrying in #{retry_in}s")
         sleep(retry_in)
         retry_in = [retry_in * 2, MAX_RETRY_SECONDS].min

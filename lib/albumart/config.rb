@@ -25,6 +25,9 @@ module Albumart
   WEATHER_RETRY_SECONDS = 60
   WEATHER_MAX_AGE_SECONDS = 60 * 60
 
+  METRICS_PORT = 9101         # GET /metrics; METRICS_PORT=off in the environment disables it
+  METRICS_BIND = "0.0.0.0"
+
   DEFAULT_MATRIX_LIB = "/home/rob/rpi-rgb-led-matrix/lib/librgbmatrix.so.1"
   # Fewer PWM bits and a shorter LSB pulse raise the refresh rate so cameras don't
   # catch dark banding; dithering wins back some colour depth.
