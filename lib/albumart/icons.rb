@@ -113,11 +113,12 @@ module Albumart
     end
 
     # Not a weather condition, so it stays out of #image's dispatch.
-    def self.snowboard_image
-      image = Magick::Image.new(SIZE, SIZE) { |info| info.background_color = BACKGROUND }
+    def self.snowboard_image(size: SIZE)
+      image = Magick::Image.new(size, size) { |info| info.background_color = BACKGROUND }
       draw = Magick::Draw.new
       draw.stroke_antialias(false)
       draw.stroke("none")
+      draw.scale(size.fdiv(SIZE), size.fdiv(SIZE)) unless size == SIZE
       board(draw)
       draw.draw(image)
       image

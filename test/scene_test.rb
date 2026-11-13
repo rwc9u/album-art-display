@@ -37,6 +37,13 @@ class SceneTest < Minitest::Test
                  snow_scene(mountain_weather: mountain(:clear, day: false)).key
   end
 
+  def test_snow_key_changes_with_the_mountain_high_and_low
+    refute_equal snow_scene(mountain_weather: mountain(:snow)).key,
+                 snow_scene(mountain_weather: mountain(:snow).with(high: 26)).key
+    refute_equal snow_scene(mountain_weather: mountain(:snow)).key,
+                 snow_scene(mountain_weather: mountain(:snow).with(low: 7)).key
+  end
+
   def test_snow_key_is_stable_without_mountain_weather
     refute_nil snow_scene.key
     assert_equal snow_scene.key, snow_scene.key

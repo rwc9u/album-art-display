@@ -11,8 +11,8 @@ bar across the bottom for 10 seconds, then the panel rotates through five
 slides, 5 seconds each: **weather, 3-day forecast, snow report, time, album
 art**. The forecast shows the next three days (weekday, condition, high and
 low); the snow report shows Copper Mountain's base depth, the share of trails
-open and the mountain's current weather. Lines too long to fit scroll
-horizontally.
+open, and the mountain's current weather with today's high and low. Lines too
+long to fit scroll horizontally.
 
 - No cover yet, or no new cover for an hour: the art slide drops out and the
   panel rotates weather, forecast, snow report and time. The next cover brings
@@ -164,7 +164,8 @@ old by the Pi's clock, which hides it off-season.
 The weather icon in the top-right corner is the current condition at Copper
 Mountain (39.50, -106.15, fixed in `lib/albumart/config.rb`), fetched from
 Open-Meteo by a second weather fetcher on the same 10-minute schedule as the
-local weather. If it is unavailable the slide shows without the icon.
+local weather. Today's high and low at the mountain are stacked beneath it. If
+it is unavailable the slide shows without the icon or the high and low.
 
 ## Install
 
@@ -279,8 +280,8 @@ The scheduler, weather, snow report, stats and clock code load without `ffi`,
 needs `prometheus-client` and `webrick`. `bin/preview` renders every slide (each
 weather condition by day and night, the forecast with every condition and the
 widest numbers, the snow report with and without its weather icon and with the
-widest numbers, the time, art with the bar, a text card) to
-PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
+widest base, percent open and high/low, the time, art with the bar, a text
+card) to PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
 Arial Narrow Bold, so text widths differ slightly from the Pi's DejaVu.
 
 ## Rolling back

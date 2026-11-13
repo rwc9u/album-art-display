@@ -157,24 +157,54 @@ module Albumart
     end
 
     def snow_slide(reading, mountain_weather)
+      image = mountain_weather ? snow_with_weather(reading, mountain_weather) : snow_without_weather(reading)
+      open = "#{reading.percent_open}% OPEN"
+      centered(image, open, fitted_size(open, 10, WIDTH - 6), 51, DATE_COLOR)
+      image
+    end
+
+    def snow_without_weather(reading)
       image = blank
-      if mountain_weather
-        icon = Icons.image(mountain_weather.condition, day: mountain_weather.day, size: Icons::SMALL_SIZE)
-        image.composite!(icon, WIDTH - Icons::SMALL_SIZE - 2, 1, Magick::OverCompositeOp)
-        label_width = WIDTH - Icons::SMALL_SIZE - 7
-        annotate(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, label_width), 3, 4, LIGHT_GREY)
-      else
-        centered(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, WIDTH - 6), 4, LIGHT_GREY)
-      end
+      centered(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, WIDTH - 6), 4, LIGHT_GREY)
       image.composite!(Icons.snowboard_image, 1, 18, Magick::OverCompositeOp)
       depth = "#{reading.base_depth}\""
       depth_width = WIDTH - Icons::SIZE - 5
       centre = Icons::SIZE + 2 + (depth_width / 2.0)
       centered_at(image, depth, fitted_size(depth, 18, depth_width), centre, 18, WHITE)
       centered_at(image, "BASE", 8, centre, 37, GREY)
-      open = "#{reading.percent_open}% OPEN"
-      centered(image, open, fitted_size(open, 10, WIDTH - 6), 51, DATE_COLOR)
       image
+    end
+
+    # The high/low column under the icon leaves no room for the full-size board beside the depth.
+    def snow_with_weather(reading, weather)
+      image = blank
+      icon_x = WIDTH - Icons::SMALL_SIZE - 2
+      icon = Icons.image(weather.condition, day: weather.day, size: Icons::SMALL_SIZE)
+      image.composite!(icon, icon_x, 1, Magick::OverCompositeOp)
+      stacked_high_low(image, weather, icon_x + (Icons::SMALL_SIZE / 2.0))
+      annotate(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, icon_x - 5), 3, 4, LIGHT_GREY)
+      column = icon_x - 4
+      centre = 1 + (column / 2.0)
+      depth = "#{reading.base_depth}\""
+      centered_at(image, depth, fitted_size(depth, 18, column), centre, 14, WHITE)
+      board_caption(image, centre, 30)
+      image
+    end
+
+    def stacked_high_low(image, weather, centre)
+      high = weather.high.to_s
+      low = weather.low.to_s
+      size = [fitted_size(high, 10, Icons::SMALL_SIZE), fitted_size(low, 10, Icons::SMALL_SIZE)].min
+      centered_at(image, high, size, centre, 18, HIGH_COLOR)
+      centered_at(image, low, size, centre, 27, LOW_COLOR)
+    end
+
+    def board_caption(image, centre, y)
+      board_size = 16
+      gap = 2
+      x = (centre - ((board_size + gap + text_width("BASE", 8)) / 2.0)).round
+      image.composite!(Icons.snowboard_image(size: board_size), x, y, Magick::OverCompositeOp)
+      annotate(image, "BASE", 8, x + board_size + gap, y + 5, GREY)
     end
 
     # One size per row so the three columns match; may go below MIN_FIT_SIZE for the Pi's wider font.

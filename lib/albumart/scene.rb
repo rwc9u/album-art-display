@@ -16,7 +16,11 @@ module Albumart
       when :time then [slide, clock_face]
       when :weather then [slide, weather]
       when :forecast then [slide, weather.forecast]
-      when :snow then [slide, snow.base_depth, snow.percent_open, mountain_weather&.condition, mountain_weather&.day]
+      when :snow
+        [
+          slide, snow.base_depth, snow.percent_open,
+          mountain_weather&.condition, mountain_weather&.day, mountain_weather&.high, mountain_weather&.low,
+        ]
       end
     end
   end
