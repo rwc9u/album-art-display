@@ -52,7 +52,10 @@ module Albumart
     def current_scene
       reading = @weather&.current
       @mutex.synchronize do
-        slot = @scheduler.current(weather_available: !reading.nil?)
+        slot = @scheduler.current(
+          weather_available: !reading.nil?,
+          forecast_available: !reading.nil? && !reading.forecast.empty?,
+        )
         Scene.new(
           slide: slot.slide,
           art: @art,

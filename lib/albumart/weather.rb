@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "date"
 require "json"
 require "net/http"
 require "openssl"
@@ -7,8 +8,8 @@ require "uri"
 require_relative "config"
 
 module Albumart
-  # Current conditions from Open-Meteo (keyless). Location comes only from the
-  # environment and must never be logged.
+  # Current conditions and a 3-day forecast from Open-Meteo (keyless). Location
+  # comes only from the environment and must never be logged.
   module Weather
     ENDPOINT = "https://api.open-meteo.com/v1/forecast"
     UNITS = %w[fahrenheit celsius].freeze
@@ -45,7 +46,9 @@ module Albumart
       end
     end
 
-    Reading = Data.define(:temperature, :condition, :day, :high, :low, :fetched_at)
+    Reading = Data.define(:temperature, :condition, :day, :high, :low, :forecast, :fetched_at)
+    ForecastDay = Data.define(:weekday, :condition, :high, :low)
+    FORECAST_DAYS = 3
 
     def self.condition_for(code)
       CONDITION_BY_CODE.fetch(code, :cloudy)
@@ -56,16 +59,17 @@ module Albumart
         latitude: settings.latitude,
         longitude: settings.longitude,
         current: "temperature_2m,weather_code,is_day",
-        daily: "temperature_2m_max,temperature_2m_min",
+        daily: "weather_code,temperature_2m_max,temperature_2m_min",
         temperature_unit: settings.units,
         timezone: "auto",
-        forecast_days: 1,
+        forecast_days: FORECAST_DAYS + 1,
       )
       URI("#{ENDPOINT}?#{query}")
     end
 
     def self.parse(body, fetched_at:)
-      case JSON.parse(body, symbolize_names: true)
+      response = JSON.parse(body, symbolize_names: true)
+      case response
       in {
         current: { temperature_2m: Numeric => temperature, weather_code: Integer => code, is_day: 0 | 1 => is_day },
         daily: { temperature_2m_max: [Numeric => high, *], temperature_2m_min: [Numeric => low, *] },
@@ -76,6 +80,7 @@ module Albumart
           day: is_day == 1,
           high: high.round,
           low: low.round,
+          forecast: forecast(response[:daily]),
           fetched_at:,
         )
       else
@@ -83,6 +88,27 @@ module Albumart
       end
     rescue JSON::ParserError
       raise ResponseError, "response is not JSON"
+    end
+
+    # Lenient: a malformed forecast drops the forecast, never today's reading.
+    def self.forecast(daily)
+      case daily
+      in { time: Array => dates, weather_code: Array => codes,
+           temperature_2m_max: Array => highs, temperature_2m_min: Array => lows }
+        days = (1..FORECAST_DAYS).map { |index| forecast_day(dates[index], codes[index], highs[index], lows[index]) }
+        days.all? ? days : []
+      else
+        []
+      end
+    end
+
+    def self.forecast_day(date, code, high, low)
+      return unless date.is_a?(String) && code.is_a?(Integer) && high.is_a?(Numeric) && low.is_a?(Numeric)
+
+      weekday = Date.iso8601(date).strftime("%a").upcase
+      ForecastDay.new(weekday:, condition: condition_for(code), high: high.round, low: low.round)
+    rescue ArgumentError # Date::Error, or Date's length limit on an absurd string
+      nil
     end
 
     def self.http_get(uri)

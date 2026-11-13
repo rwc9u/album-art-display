@@ -12,7 +12,7 @@ module Albumart
   HEIGHT = 64
 
   OVERLAY_SECONDS = 10        # how long the title/artist bar stays after a track change
-  SLIDE_SECONDS = 5           # each slide's turn in the weather -> time -> art rotation
+  SLIDE_SECONDS = 5           # each slide's turn in the weather -> forecast -> time -> art rotation
   ART_IDLE_SECONDS = 60 * 60  # art leaves the rotation after this long with no new cover
   SCROLL_SPEED = 16.0         # pixels/second for text too wide to fit
   SCROLL_START_DELAY = 1.0    # seconds to hold the start of a line before scrolling

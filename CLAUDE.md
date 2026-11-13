@@ -47,13 +47,16 @@ clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
 
 - `config.rb` — every tunable constant (topics, timings, font, matrix options).
 - `scheduler.rb` — pure. Decides the current slide: after a new cover, art with
-  the title/artist bar for `OVERLAY_SECONDS`, then weather → time → art,
-  `SLIDE_SECONDS` each, skipping slides with nothing to show. The art slide drops
-  out `ART_IDLE_SECONDS` after the last cover; weather and time run all day and
-  are never dimmed or blanked.
+  the title/artist bar for `OVERLAY_SECONDS`, then weather → forecast → time →
+  art, `SLIDE_SECONDS` each, skipping slides with nothing to show. The art slide
+  drops out `ART_IDLE_SECONDS` after the last cover; weather, forecast and time
+  run all day and are never dimmed or blanked.
 - `weather.rb` — pure. Env settings, Open-Meteo request/parse, WMO code →
   condition, and a `Fetcher` that refreshes on its own thread and treats data
-  older than an hour as missing.
+  older than an hour as missing. One request carries today and the next three
+  days; today's fields are parsed strictly, the forecast leniently (anything
+  malformed yields an empty forecast, never an error). Forecast weekdays come
+  from the response's location-local dates, not the Pi's clock.
 - `clock_face.rb`, `scene.rb` — pure value objects for the time text and one frame.
 - `display.rb` — shared track state under one mutex, and the render loop. Redraws
   only when the scene key changes, or at `FPS` while the bar is visible (marquee).

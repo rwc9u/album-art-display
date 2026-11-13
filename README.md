@@ -7,13 +7,16 @@ A small Ruby MQTT client that subscribes to cover art published by
 [shairport-sync](https://github.com/mikebrady/shairport-sync) and renders it to
 an [hzeller/rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix)
 panel. After each track change it shows the art with the title and artist in a
-bar across the bottom for 10 seconds, then the panel rotates through three
-slides, 5 seconds each: **weather, time, album art**. Lines too long to fit
-scroll horizontally.
+bar across the bottom for 10 seconds, then the panel rotates through four
+slides, 5 seconds each: **weather, 3-day forecast, time, album art**. The
+forecast shows the next three days (weekday, condition, high and low). Lines too
+long to fit scroll horizontally.
 
 - No cover yet, or no new cover for an hour: the art slide drops out and the
-  panel alternates weather and time. The next cover brings it back.
-- No weather configured, or no fresh data: the weather slide is skipped.
+  panel rotates weather, forecast and time. The next cover brings it back.
+- No weather configured, or no fresh data: the weather and forecast slides are
+  skipped.
+- Forecast data missing or malformed: only the forecast slide is skipped.
 - A track with no art (e.g. after joining mid-track) shows a "text card": the
   title/artist bar on black, in the art slide's place.
 
@@ -129,8 +132,8 @@ WEATHER_UNITS=fahrenheit
 ```
 
 Without `WEATHER_LAT`/`WEATHER_LON` the service logs one line and skips the
-weather slide. Data refreshes every 10 minutes (1 minute after a failure) and
-is treated as missing once it is more than an hour old.
+weather and forecast slides. Data refreshes every 10 minutes (1 minute after a
+failure) and is treated as missing once it is more than an hour old.
 
 ## Install
 
@@ -239,7 +242,8 @@ bin/preview /tmp/albumart-preview
 The scheduler, weather, stats and clock code load without `ffi`, `rmagick` or
 `mqtt`, so `rake test` needs none of them; the metrics server test needs
 `prometheus-client` and `webrick`. `bin/preview` renders every slide (each
-weather condition by day and night, the time, art with the bar, a text card) to
+weather condition by day and night, the forecast with every condition and the
+widest numbers, the time, art with the bar, a text card) to
 PNGs plus 8× nearest-neighbour copies for viewing. On macOS it falls back to
 Arial Narrow Bold, so text widths differ slightly from the Pi's DejaVu.
 

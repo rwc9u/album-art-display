@@ -25,6 +25,10 @@ module Albumart
     HIGH_COLOR = "#FF9A3C"
     LOW_COLOR = "#78B4FF"
     MIN_FIT_SIZE = 8
+    FORECAST_COLUMN = WIDTH / 3.0
+    FORECAST_MIN_SIZE = 6
+    FORECAST_DAY_SIZE = 9
+    FORECAST_TEMP_SIZE = 11
     WIDTH_CACHE_LIMIT = 256
 
     def initialize
@@ -65,6 +69,7 @@ module Albumart
       when :art then art_slide(scene)
       when :time then time_slide(scene.clock_face)
       when :weather then weather_slide(scene.weather)
+      when :forecast then forecast_slide(scene.weather)
       end
     end
 
@@ -132,6 +137,33 @@ module Albumart
       annotate(image, temperature, size, 30 + ((WIDTH - 31 - text_width(temperature, size)) / 2.0), 10, WHITE)
       high_low(image, "H #{reading.high}", "L #{reading.low}", 44)
       image
+    end
+
+    def forecast_slide(reading)
+      image = blank
+      days = reading.forecast
+      day_size = column_size(days.map(&:weekday), FORECAST_DAY_SIZE)
+      temp_size = column_size(days.flat_map { |day| [day.high.to_s, day.low.to_s] }, FORECAST_TEMP_SIZE)
+      days.each_with_index do |day, column|
+        centre = FORECAST_COLUMN * (column + 0.5)
+        icon = Icons.image(day.condition, day: true, size: Icons::SMALL_SIZE)
+        centered_at(image, day.weekday, day_size, centre, 4, LIGHT_GREY)
+        image.composite!(icon, (centre - (Icons::SMALL_SIZE / 2.0)).round, 16, Magick::OverCompositeOp)
+        centered_at(image, day.high.to_s, temp_size, centre, 36, HIGH_COLOR)
+        centered_at(image, day.low.to_s, temp_size, centre, 49, LOW_COLOR)
+      end
+      image
+    end
+
+    # One size per row so the three columns match; may go below MIN_FIT_SIZE for the Pi's wider font.
+    def column_size(texts, largest)
+      largest.downto(FORECAST_MIN_SIZE).find do |size|
+        texts.all? { |text| text_width(text, size) <= FORECAST_COLUMN - 2 }
+      end || FORECAST_MIN_SIZE
+    end
+
+    def centered_at(image, text, size, centre, y, color)
+      annotate(image, text, size, centre - (text_width(text, size) / 2.0), y, color)
     end
 
     def high_low(image, high, low, y)
