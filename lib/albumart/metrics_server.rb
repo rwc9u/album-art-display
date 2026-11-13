@@ -1,53 +1,81 @@
 # frozen_string_literal: true
 
-require "webrick"
+require "falcon"
+require "async/http/endpoint"
+require "protocol/http/middleware"
 require "prometheus/client"
 require "prometheus/client/formats/text"
 require_relative "config"
 require_relative "scheduler"
 
 module Albumart
-  # Serves GET /metrics in the Prometheus text format. WEBrick binds the port in
-  # .new, so bind errors surface there rather than in #start.
+  # Serves GET /metrics in the Prometheus text format with Falcon. The port is
+  # bound in .new, so bind errors surface there rather than in #start.
   class MetricsServer
     PATH = "/metrics"
     CONTENT_TYPE = "#{Prometheus::Client::Formats::Text::CONTENT_TYPE}; charset=utf-8".freeze
 
     def initialize(stats:, port: METRICS_PORT, bind: METRICS_BIND)
       @stats = stats
-      @server = WEBrick::HTTPServer.new(
-        BindAddress: bind,
-        Port: port,
-        AccessLog: [],
-        Logger: WEBrick::Log.new($stderr, WEBrick::Log::WARN),
-        DoNotReverseLookup: true,
-      )
-      @server.mount_proc("/") { |request, response| respond(request, response) }
+      @endpoint = Async::HTTP::Endpoint.parse("http://#{bind}:#{port}")
+      @bound = @endpoint.bound
+      @port = @bound.sockets.first.local_address.ip_port
+      @stop = Thread::Queue.new
+      @mutex = Mutex.new
+      @state = :idle
     end
+
+    attr_reader :port
 
     def start
-      @server.start
+      @mutex.synchronize do
+        return unless @state == :idle
+
+        @state = :running
+      end
+      begin
+        serve
+      ensure
+        @bound.close
+      end
     end
 
+    # Closes the socket itself only when #start is not serving; a running #start closes it on the way out.
     def shutdown
-      @server.shutdown
-    end
-
-    def port
-      @server.config[:Port]
+      @mutex.synchronize do
+        @stop.close
+        if @state == :idle
+          @state = :stopped
+          @bound.close
+        end
+      end
     end
 
     private
 
-    # Setting 404 directly, rather than raising NotFound, keeps WEBrick from logging stray requests.
-    def respond(request, response)
-      unless request.path == PATH
-        response.status = 404
-        return
+    def serve
+      Sync do |task|
+        server = Falcon::Server.new(application, @bound, protocol: @endpoint.protocol, scheme: @endpoint.scheme)
+        server_task = server.run
+        task.async(transient: true) do
+          @stop.pop
+          server_task.stop
+        end
+        server_task.wait
       end
+    end
 
-      response.content_type = CONTENT_TYPE
-      response.body = Prometheus::Client::Formats::Text.marshal(registry_for(@stats.snapshot))
+    def application
+      Protocol::HTTP::Middleware.for { |request| respond(request) }
+    end
+
+    def respond(request)
+      return Protocol::HTTP::Response[404, {}, []] unless request.path.split("?", 2).first == PATH
+
+      body = Prometheus::Client::Formats::Text.marshal(registry_for(@stats.snapshot))
+      Protocol::HTTP::Response[200, { "content-type" => CONTENT_TYPE }, [body]]
+    rescue StandardError
+      Protocol::HTTP::Response[500, {}, []]
     end
 
     # A fresh registry per scrape: counters can then be set to the snapshot's totals, and

@@ -15,7 +15,7 @@ class PureLoadTest < Minitest::Test
       require "albumart/clock_face"
       require "albumart/scene"
       require "albumart/display"
-      loaded = %i[FFI Magick MQTT WEBrick Prometheus].select { |name| Object.const_defined?(name) }
+      loaded = %i[FFI Magick MQTT Falcon Async Prometheus].select { |name| Object.const_defined?(name) }
       abort "loaded: \#{loaded.join(', ')}" unless loaded.empty?
     RUBY
     lib = File.expand_path("../lib", __dir__)

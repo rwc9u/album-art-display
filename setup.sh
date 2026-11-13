@@ -37,7 +37,7 @@ echo "==> Installing packages (broker, Ruby, build tools)"
 apt-get update -qq
 apt-get install -y \
   mosquitto mosquitto-clients \
-  ruby ruby-dev ruby-ffi ruby-rmagick ruby-webrick \
+  ruby ruby-dev ruby-ffi ruby-rmagick \
   build-essential git \
   fonts-dejavu-core
 
@@ -53,6 +53,13 @@ if gem list --installed --exact prometheus-client >/dev/null; then
   echo "    prometheus-client gem already installed — skipping"
 else
   gem install --no-document prometheus-client
+fi
+
+echo "==> Falcon HTTP server (metrics)"
+if gem list --installed --exact falcon >/dev/null; then
+  echo "    falcon gem already installed — skipping"
+else
+  gem install --no-document falcon
 fi
 
 echo "==> LED-matrix shared library"
