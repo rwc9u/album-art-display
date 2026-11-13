@@ -11,11 +11,22 @@ module Albumart
     IDLE_TICK = 0.1
     EMPTY_COVER_BYTES = 100
 
-    def initialize(renderer:, matrix:, scheduler:, weather:, clock: Albumart.monotonic_clock, stats: nil)
+    def initialize(
+      renderer:,
+      matrix:,
+      scheduler:,
+      weather:,
+      snow: nil,
+      mountain_weather: nil,
+      clock: Albumart.monotonic_clock,
+      stats: nil
+    )
       @renderer = renderer
       @matrix = matrix
       @scheduler = scheduler
       @weather = weather
+      @snow = snow
+      @mountain_weather = mountain_weather
       @clock = clock
       @stats = stats
       @mutex = Mutex.new
@@ -51,10 +62,13 @@ module Albumart
 
     def current_scene
       reading = @weather&.current
+      snow = @snow&.current
+      mountain_weather = @mountain_weather&.current
       @mutex.synchronize do
         slot = @scheduler.current(
           weather_available: !reading.nil?,
           forecast_available: !reading.nil? && !reading.forecast.empty?,
+          snow_available: !snow.nil?,
         )
         Scene.new(
           slide: slot.slide,
@@ -65,6 +79,8 @@ module Albumart
           elapsed: @clock.call - slot.started_at,
           weather: reading,
           clock_face: slot.slide == :time ? ClockFace.at(Time.now) : nil,
+          snow:,
+          mountain_weather:,
         )
       end
     end

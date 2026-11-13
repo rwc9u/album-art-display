@@ -1,13 +1,14 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Album art, time and weather on a 64x64 RGB LED matrix. Run as root:
+# Album art, time, weather and Copper Mountain's snow report on a 64x64 RGB LED matrix. Run as root:
 #   /usr/bin/ruby bin/albumart-display
 
 require_relative "../lib/albumart/config"
 require_relative "../lib/albumart/stats"
 require_relative "../lib/albumart/scheduler"
 require_relative "../lib/albumart/weather"
+require_relative "../lib/albumart/snow_report"
 require_relative "../lib/albumart/renderer"
 require_relative "../lib/albumart/display"
 require_relative "../lib/albumart/mqtt_listener"
@@ -30,6 +31,13 @@ weather =
     Albumart.log("[weather] #{e.message}; weather slide disabled")
     nil
   end
+
+snow = Albumart::SnowReport::Fetcher.new(stats:)
+mountain_settings = Albumart::Weather::Settings.new(
+  latitude: Albumart::SNOW_LATITUDE, longitude: Albumart::SNOW_LONGITUDE, units: "fahrenheit",
+)
+# No stats: the local-weather metrics should describe the local weather only.
+mountain_weather = Albumart::Weather::Fetcher.new(settings: mountain_settings, label: "mountain weather")
 
 # Metrics are optional: no failure here may stop the panel, so every error disables them.
 metrics_setting = ENV.fetch("METRICS_PORT", Albumart::METRICS_PORT.to_s)
@@ -57,12 +65,15 @@ display = Albumart::Display.new(
   matrix:,
   scheduler: Albumart::Scheduler.new(clock: Albumart.monotonic_clock),
   weather:,
+  snow:,
+  mountain_weather:,
   stats:,
 )
 listener = Albumart::MqttListener.new(stats:) { |topic, payload| display.handle_message(topic, payload) }
 
 threads = [Thread.new { display.run }, Thread.new { listener.run }]
 threads << Thread.new { weather.run } if weather
+threads << Thread.new { snow.run } << Thread.new { mountain_weather.run }
 if metrics
   threads << Thread.new do
     metrics.start

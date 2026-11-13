@@ -70,6 +70,7 @@ module Albumart
       when :time then time_slide(scene.clock_face)
       when :weather then weather_slide(scene.weather)
       when :forecast then forecast_slide(scene.weather)
+      when :snow then snow_slide(scene.snow, scene.mountain_weather)
       end
     end
 
@@ -152,6 +153,27 @@ module Albumart
         centered_at(image, day.high.to_s, temp_size, centre, 36, HIGH_COLOR)
         centered_at(image, day.low.to_s, temp_size, centre, 49, LOW_COLOR)
       end
+      image
+    end
+
+    def snow_slide(reading, mountain_weather)
+      image = blank
+      if mountain_weather
+        icon = Icons.image(mountain_weather.condition, day: mountain_weather.day, size: Icons::SMALL_SIZE)
+        image.composite!(icon, WIDTH - Icons::SMALL_SIZE - 2, 1, Magick::OverCompositeOp)
+        label_width = WIDTH - Icons::SMALL_SIZE - 7
+        annotate(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, label_width), 3, 4, LIGHT_GREY)
+      else
+        centered(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, WIDTH - 6), 4, LIGHT_GREY)
+      end
+      image.composite!(Icons.snowboard_image, 1, 18, Magick::OverCompositeOp)
+      depth = "#{reading.base_depth}\""
+      depth_width = WIDTH - Icons::SIZE - 5
+      centre = Icons::SIZE + 2 + (depth_width / 2.0)
+      centered_at(image, depth, fitted_size(depth, 18, depth_width), centre, 18, WHITE)
+      centered_at(image, "BASE", 8, centre, 37, GREY)
+      open = "#{reading.percent_open}% OPEN"
+      centered(image, open, fitted_size(open, 10, WIDTH - 6), 51, DATE_COLOR)
       image
     end
 

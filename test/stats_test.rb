@@ -19,6 +19,8 @@ class StatsTest < Minitest::Test
       mqtt_disconnects_total: 0,
       weather_age_seconds: nil,
       weather_fetch_errors_total: 0,
+      snow_age_seconds: nil,
+      snow_fetch_errors_total: 0,
       current_slide: nil,
     )
 
@@ -79,6 +81,24 @@ class StatsTest < Minitest::Test
     @stats.weather_fetch_failed
 
     assert_nil @stats.snapshot.weather_age_seconds
+  end
+
+  def test_ages_the_last_successful_snow_fetch
+    @stats.snow_fetched
+    @clock.advance(1800)
+    @stats.snow_fetch_failed
+    @stats.snow_fetch_failed
+
+    snapshot = @stats.snapshot
+
+    assert_equal 1800.0, snapshot.snow_age_seconds
+    assert_equal 2, snapshot.snow_fetch_errors_total
+  end
+
+  def test_failed_snow_fetches_alone_leave_the_snow_age_unknown
+    @stats.snow_fetch_failed
+
+    assert_nil @stats.snapshot.snow_age_seconds
   end
 
   def test_records_the_current_slide

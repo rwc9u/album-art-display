@@ -15,6 +15,8 @@ module Albumart
       :mqtt_disconnects_total,
       :weather_age_seconds,
       :weather_fetch_errors_total,
+      :snow_age_seconds,
+      :snow_fetch_errors_total,
       :current_slide,
     )
 
@@ -29,6 +31,8 @@ module Albumart
       @mqtt_disconnects = 0
       @weather_fetched_at = nil
       @weather_fetch_errors = 0
+      @snow_fetched_at = nil
+      @snow_fetch_errors = 0
       @slide = nil
     end
 
@@ -61,6 +65,14 @@ module Albumart
       @mutex.synchronize { @weather_fetch_errors += 1 }
     end
 
+    def snow_fetched
+      @mutex.synchronize { @snow_fetched_at = @clock.call }
+    end
+
+    def snow_fetch_failed
+      @mutex.synchronize { @snow_fetch_errors += 1 }
+    end
+
     def slide_shown(slide)
       @mutex.synchronize { @slide = slide }
     end
@@ -77,6 +89,8 @@ module Albumart
           mqtt_disconnects_total: @mqtt_disconnects,
           weather_age_seconds: @weather_fetched_at && now - @weather_fetched_at,
           weather_fetch_errors_total: @weather_fetch_errors,
+          snow_age_seconds: @snow_fetched_at && now - @snow_fetched_at,
+          snow_fetch_errors_total: @snow_fetch_errors,
           current_slide: @slide,
         )
       end
