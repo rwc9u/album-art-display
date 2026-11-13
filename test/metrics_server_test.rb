@@ -85,4 +85,28 @@ class MetricsServerTest < Minitest::Test
     assert_equal "404", get("/").code
     assert_equal "404", get("/metrics/extra").code
   end
+
+  def test_ignores_a_query_string
+    response = get("/metrics?x=1")
+
+    assert_equal "200", response.code
+    assert_includes response.body.lines(chomp: true), "albumart_covers_total 0.0"
+  end
+
+  def test_a_second_server_on_the_same_port_fails_in_new
+    assert_raises(Errno::EADDRINUSE) do
+      Albumart::MetricsServer.new(stats: @stats, port: @server.port, bind: "127.0.0.1")
+    end
+  end
+
+  def test_shutdown_before_start_releases_the_port_and_can_repeat
+    idle = Albumart::MetricsServer.new(stats: @stats, port: 0, bind: "127.0.0.1")
+
+    idle.shutdown
+    idle.shutdown
+    rebound = Albumart::MetricsServer.new(stats: @stats, port: idle.port, bind: "127.0.0.1")
+    rebound.shutdown
+
+    assert_equal idle.port, rebound.port
+  end
 end

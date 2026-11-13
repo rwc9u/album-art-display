@@ -22,10 +22,10 @@ the resort's fixed public coordinates.
 
 `display.py` is the legacy Python implementation, kept untouched as a rollback.
 
-Runtime: Ruby 3.3 from apt (`/usr/bin/ruby`), apt `ruby-ffi`, `ruby-rmagick`
-(6.0.1 on trixie) and `ruby-webrick`, and the `mqtt` and `prometheus-client`
-gems installed with `gem install`. No Bundler at runtime; the `Gemfile` is for
-local development only.
+Runtime: Ruby 3.3 from apt (`/usr/bin/ruby`). Gems come from Bundler and the
+committed `Gemfile.lock` (rmagick pinned to 6.0.1), installed to
+`/var/lib/albumart-display/bundle`; the service runs
+`bundle exec ruby bin/albumart-display` from the checkout.
 
 ## What runs where
 
@@ -34,14 +34,14 @@ root, so it **only runs on the Pi** (Raspberry Pi 4 + Adafruit RGB Matrix
 Bonnet). Everything else can be exercised on a dev machine:
 
 ```bash
-rake test                        # minitest suite, warnings on
-bin/preview /tmp/albumart-preview  # every slide as PNG + 8x copies (needs rmagick)
-ruby -wc lib/albumart/*.rb bin/*   # syntax/warning check
+bundle exec rake test                          # minitest suite, warnings on
+bundle exec bin/preview /tmp/albumart-preview  # every slide as PNG + 8x copies
+ruby -wc lib/albumart/*.rb bin/*               # syntax/warning check
 ```
 
 The scheduler, weather and snow report clients/parsers, stats and clock
 formatting are pure Ruby and must keep loading without `ffi`, `rmagick`, `mqtt`,
-`webrick` or `prometheus-client` (`test/pure_load_test.rb` enforces this). Tests inject the
+`falcon` or `prometheus-client` (`test/pure_load_test.rb` enforces this). Tests inject the
 clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
 `journalctl -u albumart-display`.
 
@@ -85,9 +85,11 @@ clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
   `Display`, `MqttListener`, the local `Weather::Fetcher` and
   `SnowReport::Fetcher` through an optional `stats:`
   keyword; `#snapshot` computes ages at call time.
-- `metrics_server.rb` — the only file that loads `webrick` and
-  `prometheus-client`. Serves `GET /metrics` on `METRICS_PORT` (9101), building
-  a fresh registry from `stats.snapshot` on every scrape.
+- `metrics_server.rb` — the only file that loads `falcon` and
+  `prometheus-client`. Serves `GET /metrics` on `METRICS_PORT` (9101) with a
+  plain `Protocol::HTTP::Middleware` app (no Rack), building a fresh registry
+  from `stats.snapshot` on every scrape. Its requires all sit at the top, so
+  nothing loads after the matrix drops root.
 
 Six threads: render, MQTT, weather, mountain weather, snow, metrics.
 `Thread.abort_on_exception = true`, so any unhandled exception exits the process
@@ -107,19 +109,24 @@ no RTC.
   matching the old Python binding). Anything that reads root-only files must load
   before `Albumart::Matrix.new`.
 - A metrics failure must never exit the process (`Thread.abort_on_exception` is
-  on). `bin/albumart-display` rescues load and bind errors (WEBrick binds in
+  on). `bin/albumart-display` rescues load and bind errors (the port is bound in
   `MetricsServer.new`) and anything raised by `#start`, logs
   `[metrics] ...; metrics disabled` and keeps the panel running.
-- rmagick < 7.1 (the Pi's apt 6.0.1) interprets `%` escapes, backslashes and a
+- The bundle lives in `/var/lib/albumart-display/bundle`, outside the checkout,
+  because `/home` is unreadable after the matrix drops root and a lazily required
+  gem file would raise `LoadError`. Do not move it to `vendor/bundle`.
+- rmagick is pinned to 6.0.1, which interprets `%` escapes, backslashes and a
   leading `@file` in text; `Renderer#literal` escapes them. Keep all text going
   through it.
-- `annotate`'s vertical offset and type metrics differ between the Pi's
-  ImageMagick 6 and a dev machine, so vertical text placement must go through
-  the ink-measuring helper (`Renderer#ink_rows`), not font metrics.
+- `annotate`'s vertical offset and type metrics differ between the Pi and a dev
+  machine, so vertical text placement must go through the ink-measuring helper
+  (`Renderer#ink_rows`), not font metrics.
 
 ## Deploy
 
-`sudo ./setup.sh` (run on the Pi, from the checkout) installs deps, builds the
+`sudo ./setup.sh` (run on the Pi, from the checkout) installs deps, runs
+`bundle install` (as the checkout's owner, into
+`/var/lib/albumart-display/bundle`), builds the
 matrix shared library (`make -C $MATRIX_DIR/lib`), installs the mosquitto config
 and the env template, and generates + enables the `albumart-display` service
 pointing at wherever the repo was cloned. shairport-sync is **not** installed by
