@@ -58,18 +58,37 @@ save.call(
 Albumart::Weather::CONDITION_BY_CODE.values.uniq.each do |condition|
   { "day" => true, "night" => false }.each do |label, day|
     reading = Albumart::Weather::Reading.new(
-      temperature: 72, condition:, day:, high: 78, low: 55, fetched_at: 0.0,
+      temperature: 72, condition:, day:, high: 78, low: 55, forecast: [], fetched_at: 0.0,
     )
     save.call("weather-#{condition}-#{label}", scene.call(:weather, weather: reading))
   end
 end
 wide = Albumart::Weather::Reading.new(
-  temperature: -12, condition: :snow, day: true, high: -3, low: -18, fetched_at: 0.0,
+  temperature: -12, condition: :snow, day: true, high: -3, low: -18, forecast: [], fetched_at: 0.0,
 )
 save.call("weather-wide-numbers", scene.call(:weather, weather: wide))
 hot = Albumart::Weather::Reading.new(
-  temperature: 104, condition: :clear, day: true, high: 108, low: 81, fetched_at: 0.0,
+  temperature: 104, condition: :clear, day: true, high: 108, low: 81, forecast: [], fetched_at: 0.0,
 )
 save.call("weather-three-digits", scene.call(:weather, weather: hot))
+
+forecast_scene = lambda do |days|
+  forecast = days.map do |weekday, condition, high, low|
+    Albumart::Weather::ForecastDay.new(weekday:, condition:, high:, low:)
+  end
+  reading = Albumart::Weather::Reading.new(
+    temperature: 45, condition: :rain, day: false, high: 47, low: 38, forecast:, fetched_at: 0.0,
+  )
+  scene.call(:forecast, weather: reading)
+end
+save.call("forecast", forecast_scene.call([["SAT", :cloudy, 48, 37], ["SUN", :rain, 46, 34], ["MON", :clear, 53, 40]]))
+Albumart::Weather::CONDITION_BY_CODE.values.uniq.cycle.take(9).each_slice(3).with_index do |conditions, page|
+  days = conditions.zip(%w[THU FRI SAT]).map { |condition, weekday| [weekday, condition, 72, 55] }
+  save.call("forecast-conditions-#{page + 1}", forecast_scene.call(days))
+end
+save.call(
+  "forecast-widest",
+  forecast_scene.call([["WED", :snow, 108, -18], ["THU", :thunderstorm, 104, -9], ["FRI", :fog, 100, -11]]),
+)
 
 puts "wrote previews to #{out_dir} (#{Magick::Version}, font: #{renderer.font || 'ImageMagick default'})"

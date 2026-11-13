@@ -6,7 +6,7 @@ module Albumart
   # Decides which slide is on the panel. A new cover shows the art with its
   # title/artist bar, then the rotation restarts from weather.
   class Scheduler
-    SLIDES = %i[weather time art].freeze
+    SLIDES = %i[weather forecast time art].freeze
 
     Slot = Data.define(:slide, :bar, :started_at)
 
@@ -26,11 +26,11 @@ module Albumart
       @index = nil
     end
 
-    def current(weather_available:)
+    def current(weather_available:, forecast_available:)
       now = @clock.call
       return Slot.new(slide: :art, bar: true, started_at: @cover_at) if overlay?(now)
 
-      available = SLIDES.select { |slide| available?(slide, now, weather_available) }
+      available = SLIDES.select { |slide| available?(slide, now, weather_available, forecast_available) }
       advance(now, available)
       slide = SLIDES[@index]
       Slot.new(slide:, bar: slide == :art && @text_card, started_at: @slot_started_at)
@@ -42,9 +42,10 @@ module Albumart
       !@cover_at.nil? && now < @cover_at + OVERLAY_SECONDS
     end
 
-    def available?(slide, now, weather_available)
+    def available?(slide, now, weather_available, forecast_available)
       case slide
       when :weather then weather_available
+      when :forecast then forecast_available
       when :time then true
       when :art then !@cover_at.nil? && now - @cover_at < ART_IDLE_SECONDS
       end

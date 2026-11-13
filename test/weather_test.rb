@@ -8,10 +8,17 @@ class WeatherTest < Minitest::Test
   RESPONSE = <<~JSON
     {"latitude":52.512604,"longitude":13.419517,"timezone":"Europe/Berlin",
      "current_units":{"temperature_2m":"°F","weather_code":"wmo code","is_day":""},
-     "current":{"time":"2026-11-11T18:30","interval":900,"temperature_2m":38.9,"weather_code":3,"is_day":0},
-     "daily_units":{"temperature_2m_max":"°F","temperature_2m_min":"°F"},
-     "daily":{"time":["2026-11-11"],"temperature_2m_max":[41.3],"temperature_2m_min":[35.7]}}
+     "current":{"time":"2026-11-13T17:30","interval":900,"temperature_2m":44.9,"weather_code":80,"is_day":0},
+     "daily_units":{"weather_code":"wmo code","temperature_2m_max":"°F","temperature_2m_min":"°F"},
+     "daily":{"time":["2026-11-13","2026-11-14","2026-11-15","2026-11-16"],"weather_code":[80,3,61,80],
+              "temperature_2m_max":[47.1,48.0,45.8,52.5],"temperature_2m_min":[37.5,37.4,34.0,40.0]}}
   JSON
+
+  FORECAST = [
+    Albumart::Weather::ForecastDay.new(weekday: "SAT", condition: :cloudy, high: 48, low: 37),
+    Albumart::Weather::ForecastDay.new(weekday: "SUN", condition: :rain, high: 46, low: 34),
+    Albumart::Weather::ForecastDay.new(weekday: "MON", condition: :rain, high: 53, low: 40),
+  ].freeze
 
   SETTINGS = Albumart::Weather::Settings.new(latitude: 52.52, longitude: 13.41, units: "fahrenheit")
 
@@ -19,9 +26,57 @@ class WeatherTest < Minitest::Test
     reading = Albumart::Weather.parse(RESPONSE, fetched_at: 5.0)
 
     expected = Albumart::Weather::Reading.new(
-      temperature: 39, condition: :cloudy, day: false, high: 41, low: 36, fetched_at: 5.0,
+      temperature: 45, condition: :rain, day: false, high: 47, low: 38, forecast: FORECAST, fetched_at: 5.0,
     )
     assert_equal expected, reading
+  end
+
+  def test_parses_the_next_three_days_as_the_forecast
+    reading = Albumart::Weather.parse(RESPONSE, fetched_at: 0.0)
+
+    assert_equal FORECAST, reading.forecast
+  end
+
+  def test_a_single_day_response_parses_today_without_a_forecast
+    body = RESPONSE.sub('["2026-11-13","2026-11-14","2026-11-15","2026-11-16"]', '["2026-11-13"]')
+                   .sub("[80,3,61,80]", "[80]")
+                   .sub("[47.1,48.0,45.8,52.5]", "[47.1]")
+                   .sub("[37.5,37.4,34.0,40.0]", "[37.5]")
+
+    reading = Albumart::Weather.parse(body, fetched_at: 0.0)
+
+    assert_equal 47, reading.high
+    assert_equal [], reading.forecast
+  end
+
+  def test_a_null_in_a_forecast_day_drops_the_forecast_but_keeps_today
+    body = RESPONSE.sub("[47.1,48.0,45.8,52.5]", "[47.1,48.0,null,52.5]")
+
+    reading = Albumart::Weather.parse(body, fetched_at: 0.0)
+
+    assert_equal 45, reading.temperature
+    assert_equal [], reading.forecast
+  end
+
+  def test_missing_daily_weather_codes_drop_the_forecast_but_keep_today
+    body = RESPONSE.sub('"weather_code":[80,3,61,80],', "")
+
+    reading = Albumart::Weather.parse(body, fetched_at: 0.0)
+
+    assert_equal 38, reading.low
+    assert_equal [], reading.forecast
+  end
+
+  def test_an_unparseable_forecast_date_drops_the_forecast
+    body = RESPONSE.sub('"2026-11-15"', '"someday"')
+
+    assert_equal [], Albumart::Weather.parse(body, fetched_at: 0.0).forecast
+  end
+
+  def test_an_overlong_forecast_date_drops_the_forecast
+    body = RESPONSE.sub('"2026-11-15"', %("#{'2' * 200}"))
+
+    assert_equal [], Albumart::Weather.parse(body, fetched_at: 0.0).forecast
   end
 
   def test_parse_rejects_an_unexpected_shape
@@ -31,7 +86,7 @@ class WeatherTest < Minitest::Test
   end
 
   def test_parse_rejects_missing_daily_values
-    body = RESPONSE.sub("[41.3]", "[null]")
+    body = RESPONSE.sub("[47.1,", "[null,")
 
     assert_raises(Albumart::Weather::ResponseError) { Albumart::Weather.parse(body, fetched_at: 0.0) }
   end
@@ -96,7 +151,8 @@ class WeatherTest < Minitest::Test
     assert_equal "api.open-meteo.com", uri.host
     assert_equal "celsius", query["temperature_unit"]
     assert_equal "temperature_2m,weather_code,is_day", query["current"]
-    assert_equal "temperature_2m_max,temperature_2m_min", query["daily"]
+    assert_equal "weather_code,temperature_2m_max,temperature_2m_min", query["daily"]
+    assert_equal "4", query["forecast_days"]
   end
 
   def test_fetcher_has_nothing_before_the_first_fetch
@@ -113,7 +169,7 @@ class WeatherTest < Minitest::Test
     )
 
     assert fetcher.refresh
-    assert_equal 39, fetcher.current.temperature
+    assert_equal 45, fetcher.current.temperature
     assert_equal [Albumart::Weather.request_uri(SETTINGS)], requested
   end
 
@@ -126,7 +182,7 @@ class WeatherTest < Minitest::Test
     assert_output("[weather] fetch failed: Albumart::Weather::ResponseError: HTTP 503\n") do
       refute fetcher.refresh
     end
-    assert_equal 39, fetcher.current.temperature
+    assert_equal 45, fetcher.current.temperature
   end
 
   def test_fetcher_treats_old_data_as_missing

@@ -7,6 +7,7 @@ module Albumart
   # either fully lit or off.
   module Icons
     SIZE = 28
+    SMALL_SIZE = 16
     SUN = "#FFC400"
     MOON = "#E8E0A0"
     CLOUD = "#E6E6E6"
@@ -17,12 +18,14 @@ module Albumart
     FOG = "#A0A0A0"
     BACKGROUND = "#000000"
 
-    def self.image(condition, day:)
-      image = Magick::Image.new(SIZE, SIZE) { |info| info.background_color = BACKGROUND }
+    def self.image(condition, day:, size: SIZE)
+      image = Magick::Image.new(size, size) { |info| info.background_color = BACKGROUND }
       draw = Magick::Draw.new
       draw.stroke_antialias(false)
       draw.text_antialias(false)
       draw.stroke("none")
+      # Scaled primitives stay crisp; resampling the 28px image breaks up the sun's rays.
+      draw.scale(size.fdiv(SIZE), size.fdiv(SIZE)) unless size == SIZE
       public_send(condition, draw, day)
       draw.draw(image)
       image
