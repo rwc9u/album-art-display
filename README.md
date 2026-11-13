@@ -161,11 +161,13 @@ hourly (10 minutes after a failure), and the slide is skipped once the last
 good fetch is more than 3 hours old or the newest report is more than 3 days
 old by the Pi's clock, which hides it off-season.
 
-The weather icon in the top-right corner is the current condition at Copper
-Mountain (39.50, -106.15, fixed in `lib/albumart/config.rb`), fetched from
-Open-Meteo by a second weather fetcher on the same 10-minute schedule as the
-local weather. Today's high and low at the mountain are stacked beneath it. If
-it is unavailable the slide shows without the icon or the high and low.
+The slide has four rows: the resort name with a snowboard icon, the base depth
+with its BASE caption, the mountain's weather icon followed by today's high and
+low, and the share of trails open. The weather is the current condition at
+Copper Mountain (39.50, -106.15, fixed in `lib/albumart/config.rb`), fetched
+from Open-Meteo by a second weather fetcher on the same 10-minute schedule as
+the local weather. If it is unavailable that row is dropped and the other three
+are spaced out to fill the panel.
 
 ## Install
 

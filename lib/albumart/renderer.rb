@@ -35,7 +35,7 @@ module Albumart
       @font = FONT_CANDIDATES.find { |path| File.exist?(path) }
       @scratch = Magick::Image.new(1, 1)
       @draws = {}
-      @widths = {}
+      @metrics = {}
       @barred = nil
     end
 
@@ -156,55 +156,52 @@ module Albumart
       image
     end
 
-    def snow_slide(reading, mountain_weather)
-      image = mountain_weather ? snow_with_weather(reading, mountain_weather) : snow_without_weather(reading)
+    def snow_slide(reading, weather)
+      image = blank
+      board_y, baseline, open_y = weather ? [0, 33, 54] : [6, 43, 50]
+      snow_header(image, board_y)
+      base_depth(image, "#{reading.base_depth}\"", baseline)
+      mountain_weather_row(image, weather, 36) if weather
       open = "#{reading.percent_open}% OPEN"
-      centered(image, open, fitted_size(open, 10, WIDTH - 6), 51, DATE_COLOR)
+      centered(image, open, fitted_size(open, 10, WIDTH - 6), open_y, DATE_COLOR)
       image
     end
 
-    def snow_without_weather(reading)
-      image = blank
-      centered(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, WIDTH - 6), 4, LIGHT_GREY)
-      image.composite!(Icons.snowboard_image, 1, 18, Magick::OverCompositeOp)
-      depth = "#{reading.base_depth}\""
-      depth_width = WIDTH - Icons::SIZE - 5
-      centre = Icons::SIZE + 2 + (depth_width / 2.0)
-      centered_at(image, depth, fitted_size(depth, 18, depth_width), centre, 18, WHITE)
-      centered_at(image, "BASE", 8, centre, 37, GREY)
-      image
+    def snow_header(image, y)
+      board_x = WIDTH - Icons::SMALL_SIZE - 1
+      image.composite!(Icons.snowboard_image(size: Icons::SMALL_SIZE), board_x, y, Magick::OverCompositeOp)
+      size = fitted_size(SNOW_RESORT_LABEL, 9, board_x - 4)
+      annotate(image, SNOW_RESORT_LABEL, size, 2, y + icon_centred(SNOW_RESORT_LABEL, size), LIGHT_GREY)
     end
 
-    # The high/low column under the icon leaves no room for the full-size board beside the depth.
-    def snow_with_weather(reading, weather)
-      image = blank
-      icon_x = WIDTH - Icons::SMALL_SIZE - 2
-      icon = Icons.image(weather.condition, day: weather.day, size: Icons::SMALL_SIZE)
-      image.composite!(icon, icon_x, 1, Magick::OverCompositeOp)
-      stacked_high_low(image, weather, icon_x + (Icons::SMALL_SIZE / 2.0))
-      annotate(image, SNOW_RESORT_LABEL, fitted_size(SNOW_RESORT_LABEL, 9, icon_x - 5), 3, 4, LIGHT_GREY)
-      column = icon_x - 4
-      centre = 1 + (column / 2.0)
-      depth = "#{reading.base_depth}\""
-      centered_at(image, depth, fitted_size(depth, 18, column), centre, 14, WHITE)
-      board_caption(image, centre, 30)
-      image
+    # Annotate puts the ink top at y, so sharing a baseline means offsetting each text by its height.
+    def base_depth(image, depth, baseline)
+      gap = 3
+      caption_width = text_width("BASE", 8)
+      size = fitted_size(depth, 18, WIDTH - 4 - gap - caption_width)
+      x = (WIDTH - text_width(depth, size) - gap - caption_width) / 2.0
+      annotate(image, depth, size, x, baseline - text_height(depth, size), WHITE)
+      annotate(image, "BASE", 8, x + text_width(depth, size) + gap, baseline - text_height("BASE", 8), GREY)
     end
 
-    def stacked_high_low(image, weather, centre)
+    def mountain_weather_row(image, weather, y)
       high = weather.high.to_s
       low = weather.low.to_s
-      size = [fitted_size(high, 10, Icons::SMALL_SIZE), fitted_size(low, 10, Icons::SMALL_SIZE)].min
-      centered_at(image, high, size, centre, 18, HIGH_COLOR)
-      centered_at(image, low, size, centre, 27, LOW_COLOR)
+      gap = 4
+      size = 10.downto(MIN_FIT_SIZE).find do |s|
+        Icons::SMALL_SIZE + gap + line_width(high, low, gap, s) <= WIDTH - 4
+      end || MIN_FIT_SIZE
+      x = ((WIDTH - Icons::SMALL_SIZE - gap - line_width(high, low, gap, size)) / 2.0).round
+      icon = Icons.image(weather.condition, day: weather.day, size: Icons::SMALL_SIZE)
+      image.composite!(icon, x, y, Magick::OverCompositeOp)
+      text_y = y + icon_centred(high + low, size)
+      text_x = x + Icons::SMALL_SIZE + gap
+      annotate(image, high, size, text_x, text_y, HIGH_COLOR)
+      annotate(image, low, size, text_x + text_width(high, size) + gap, text_y, LOW_COLOR)
     end
 
-    def board_caption(image, centre, y)
-      board_size = 16
-      gap = 2
-      x = (centre - ((board_size + gap + text_width("BASE", 8)) / 2.0)).round
-      image.composite!(Icons.snowboard_image(size: board_size), x, y, Magick::OverCompositeOp)
-      annotate(image, "BASE", 8, x + board_size + gap, y + 5, GREY)
+    def icon_centred(text, size)
+      ((Icons::SMALL_SIZE - text_height(text, size)) / 2.0).round
     end
 
     # One size per row so the three columns match; may go below MIN_FIT_SIZE for the Pi's wider font.
@@ -243,8 +240,16 @@ module Albumart
     end
 
     def text_width(text, size)
-      @widths.clear if @widths.size > WIDTH_CACHE_LIMIT
-      @widths[[text, size]] ||= text_draw(size, WHITE).get_type_metrics(@scratch, literal(text)).width
+      type_metrics(text, size).width
+    end
+
+    def text_height(text, size)
+      type_metrics(text, size).bounds.y2.round
+    end
+
+    def type_metrics(text, size)
+      @metrics.clear if @metrics.size > WIDTH_CACHE_LIMIT
+      @metrics[[text, size]] ||= text_draw(size, WHITE).get_type_metrics(@scratch, literal(text))
     end
 
     def text_draw(size, color)

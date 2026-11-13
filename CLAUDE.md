@@ -73,10 +73,10 @@ clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
   only when the scene key changes, or at `FPS` while the bar is visible (marquee).
 - `renderer.rb`, `icons.rb` — RMagick. Decodes covers (JPEG/PNG only), composes
   each slide, and draws weather icons and the snow slide's snowboard from
-  primitives without anti-aliasing. The snow slide stacks the mountain's high
-  and low under its weather icon and shrinks the snowboard to 16px beside the
-  BASE caption; without mountain weather it drops the icon and temperatures and
-  draws the full-size board beside the base depth.
+  primitives without anti-aliasing. The snow slide is four rows (label with a
+  16px snowboard, depth and BASE on one baseline, weather icon with high and
+  low, percent open); without mountain weather it drops the third row and
+  re-spaces the rest.
 - `matrix.rb` — `ffi` binding to hzeller's C API, double-buffered with
   `led_matrix_swap_on_vsync`.
 - `mqtt_listener.rb` — the `mqtt` gem does not auto-reconnect, so this wraps it
