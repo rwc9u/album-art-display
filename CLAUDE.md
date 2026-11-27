@@ -39,10 +39,10 @@ bundle exec bin/preview /tmp/albumart-preview  # every slide as PNG + 8x copies
 ruby -wc lib/albumart/*.rb bin/*               # syntax/warning check
 ```
 
-The scheduler, weather and snow report clients/parsers, stats and clock
-formatting are pure Ruby and must keep loading without `ffi`, `rmagick`, `mqtt`,
+The scheduler, quiet hours, weather and snow report clients/parsers, stats and
+clock formatting are pure Ruby and must keep loading without `ffi`, `rmagick`, `mqtt`,
 `falcon` or `prometheus-client` (`test/pure_load_test.rb` enforces this). Tests inject the
-clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
+clocks and the HTTP call; nothing else is mocked. On the Pi, verify by watching
 `journalctl -u albumart-display`.
 
 ## Architecture
@@ -51,8 +51,13 @@ clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
 - `scheduler.rb` — pure. Decides the current slide: after a new cover, art with
   the title/artist bar for `OVERLAY_SECONDS`, then weather → forecast → snow →
   time → art, `SLIDE_SECONDS` each, skipping slides with nothing to show. The art
-  slide drops out `ART_IDLE_SECONDS` after the last cover; the others run all
-  day and are never dimmed or blanked.
+  slide drops out `ART_IDLE_SECONDS` after the last cover. It only runs during
+  the day; see `quiet_hours.rb`.
+- `quiet_hours.rb` — pure. Maps the wall-clock hour to `:full` (08:00–18:00),
+  `:dim` (the time slide only, at `EVENING_BRIGHTNESS`, until 23:00) or `:off`
+  (a black frame until 08:00). `Display` checks it before consulting the
+  scheduler, so a new cover or title bar never shows outside the day. The matrix
+  stays open while off: root is gone, so it could not be reopened at 08:00.
 - `weather.rb` — pure. Env settings, Open-Meteo request/parse, WMO code →
   condition, and a `Fetcher` that refreshes on its own thread and treats data
   older than an hour as missing. One request carries today and the next three
@@ -94,9 +99,11 @@ clock and the HTTP call; nothing else is mocked. On the Pi, verify by watching
 Six threads: render, MQTT, weather, mountain weather, snow, metrics.
 `Thread.abort_on_exception = true`, so any unhandled exception exits the process
 and systemd restarts it. All timing uses `CLOCK_MONOTONIC`; wall-clock time is
-only used for the text on the time slide and to hide a stale (off-season) snow
-report, where a report dated in the future counts as fresh because the Pi has
-no RTC.
+only used for the text on the time slide, the quiet hours, and to hide a stale
+(off-season) snow report, where a report dated in the future counts as fresh because the Pi has
+no RTC. `bin/albumart-display` sets `TZ` to `TIME_ZONE` (America/Denver) unless
+the environment already sets it, so the quiet hours follow Mountain Time and DST
+whatever the Pi's system zone is; it logs the resolved zone at startup.
 
 ## Critical coupling and landmines
 

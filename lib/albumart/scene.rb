@@ -3,8 +3,10 @@
 module Albumart
   # Everything the renderer needs for one frame.
   Scene = Data.define(
-    :slide, :art, :title, :artist, :bar, :elapsed, :weather, :clock_face, :snow, :mountain_weather,
+    :slide, :art, :title, :artist, :bar, :elapsed, :weather, :clock_face, :snow, :mountain_weather, :dimmed,
   ) do
+    def initialize(dimmed: false, **) = super
+
     def animated?
       bar
     end
@@ -13,7 +15,8 @@ module Albumart
     def key
       case slide
       when :art then [slide, art.object_id, bar]
-      when :time then [slide, clock_face]
+      when :off then [slide]
+      when :time then [slide, clock_face, dimmed]
       when :weather then [slide, weather]
       when :forecast then [slide, weather.forecast]
       when :snow

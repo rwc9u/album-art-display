@@ -21,6 +21,14 @@ module Albumart
   FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf"
   TIME_24H = false
 
+  # Wall-clock hours in TIME_ZONE: full rotation from DAY_START_HOUR, a dimmed
+  # clock only from EVENING_START_HOUR, and a dark panel from NIGHT_START_HOUR.
+  TIME_ZONE = "America/Denver"
+  DAY_START_HOUR = 8
+  EVENING_START_HOUR = 18
+  NIGHT_START_HOUR = 23
+  EVENING_BRIGHTNESS = 0.3    # fraction of full brightness for the evening clock
+
   WEATHER_REFRESH_SECONDS = 10 * 60
   WEATHER_RETRY_SECONDS = 60
   WEATHER_MAX_AGE_SECONDS = 60 * 60

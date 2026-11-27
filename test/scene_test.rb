@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "albumart/scene"
+require "albumart/clock_face"
 require "albumart/weather"
 require "albumart/snow_report"
 
@@ -52,5 +53,21 @@ class SceneTest < Minitest::Test
   def test_snow_key_ignores_the_mountain_temperature
     assert_equal snow_scene(mountain_weather: mountain(:snow)).key,
                  snow_scene(mountain_weather: mountain(:snow).with(temperature: 30)).key
+  end
+
+  def time_scene(dimmed:)
+    Albumart::Scene.new(
+      slide: :time, art: nil, title: "", artist: "", bar: false, elapsed: 0.0, weather: nil,
+      clock_face: Albumart::ClockFace.new(time: "8:15", meridiem: "PM", date: "Tue Nov 10"), snow: nil,
+      mountain_weather: nil, dimmed:,
+    )
+  end
+
+  def test_dimming_changes_the_time_key
+    refute_equal time_scene(dimmed: false).key, time_scene(dimmed: true).key
+  end
+
+  def test_scenes_are_not_dimmed_by_default
+    refute snow_scene.dimmed
   end
 end

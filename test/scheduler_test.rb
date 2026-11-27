@@ -160,4 +160,15 @@ class SchedulerTest < Minitest::Test
     assert_equal :time, slide_at(25).slide
     assert_equal :art, slide_at(30).slide
   end
+
+  def test_rotation_resumes_cleanly_after_an_overnight_gap
+    start_with_cover
+    slide_at(12)
+    @clock.advance(14 * 60 * 60)
+    @start = @clock.now
+
+    assert_includes %i[weather forecast snow time], slide_at(0).slide
+    refute slide_at(0).bar
+    refute_equal slide_at(0).slide, slide_at(5).slide
+  end
 end

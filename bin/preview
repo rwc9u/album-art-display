@@ -53,6 +53,11 @@ save.call("time-12h", scene.call(:time, clock_face: Albumart::ClockFace.at(Time.
 save.call("time-12h-morning", scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2026, 11, 10, 9, 5))))
 save.call("time-12h-widest", scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2027, 5, 26, 12, 58))))
 save.call(
+  "time-12h-evening-dimmed",
+  scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2026, 11, 10, 20, 15)), dimmed: true),
+)
+save.call("off", scene.call(:off))
+save.call(
   "time-24h",
   scene.call(:time, clock_face: Albumart::ClockFace.at(Time.new(2026, 11, 10, 21, 5), twenty_four_hour: true)),
 )
