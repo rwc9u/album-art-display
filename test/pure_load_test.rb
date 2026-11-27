@@ -13,6 +13,7 @@ class PureLoadTest < Minitest::Test
       require "albumart/weather"
       require "albumart/snow_report"
       require "albumart/clock_face"
+      require "albumart/quiet_hours"
       require "albumart/scene"
       require "albumart/display"
       loaded = %i[FFI Magick MQTT Falcon Async Prometheus].select { |name| Object.const_defined?(name) }

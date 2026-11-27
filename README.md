@@ -22,6 +22,11 @@ long to fit scroll horizontally.
 - Forecast data missing or malformed: only the forecast slide is skipped.
 - No fresh snow report, or the resort is out of season: the snow slide is
   skipped (see [Snow report](#snow-report)).
+
+The rotation runs from 8 am to 6 pm Mountain Time. From 6 pm to 11 pm the panel
+shows only a dimmed clock (no art or title bar, even if a track starts), and
+from 11 pm to 8 am it is dark. The Pi itself stays on, so this saves the LEDs'
+power, not the Pi's.
 - A track with no art (e.g. after joining mid-track) shows a "text card": the
   title/artist bar on black, in the art slide's place.
 
@@ -242,6 +247,11 @@ Edit the constants in `lib/albumart/config.rb`:
   new cover. A cover only arrives on a track change, so keep it longer than a
   typical track.
 - `TIME_24H` — 24-hour clock instead of `h:MM AM/PM`
+- `TIME_ZONE` / `DAY_START_HOUR` / `EVENING_START_HOUR` / `NIGHT_START_HOUR` —
+  the quiet hours: full rotation, then a dimmed clock, then a dark panel.
+  `TIME_ZONE` also sets the time slide's zone; a `TZ` environment variable
+  overrides it.
+- `EVENING_BRIGHTNESS` — how bright the evening clock is (0–1)
 - `SNOW_*` — snow report feeds, refresh timings, staleness limits, the resort
   label and the coordinates for its weather icon
 - `FONT_PATH` — TrueType font used for all text
@@ -270,7 +280,7 @@ The display serves Prometheus metrics at `http://albumart.local:9101/metrics`
 | `albumart_weather_fetch_errors_total` | counter | Failed weather fetches (local weather only) |
 | `albumart_snow_age_seconds` | gauge | Seconds since the last successful snow report fetch (absent until one succeeds) |
 | `albumart_snow_fetch_errors_total` | counter | Failed snow report fetches |
-| `albumart_current_slide{slide="weather\|forecast\|snow\|time\|art"}` | gauge | 1 for the slide on the panel, 0 for the others |
+| `albumart_current_slide{slide="weather\|forecast\|snow\|time\|art\|off"}` | gauge | 1 for the slide on the panel (`off` overnight), 0 for the others |
 
 Nothing about the track or the location is exposed. Set `METRICS_PORT` in
 `/etc/albumart-display.env` to change the port, or `METRICS_PORT=off` to disable

@@ -98,7 +98,9 @@ module Albumart
       counter(registry, :albumart_snow_fetch_errors_total, "Failed snow report fetches",
               snapshot.snow_fetch_errors_total)
       slides = registry.gauge(:albumart_current_slide, docstring: "1 for the slide on the panel", labels: [:slide])
-      Scheduler::SLIDES.each { |slide| slides.set(slide == snapshot.current_slide ? 1 : 0, labels: { slide: }) }
+      [*Scheduler::SLIDES, :off].each do |slide|
+        slides.set(slide == snapshot.current_slide ? 1 : 0, labels: { slide: })
+      end
       registry
     end
 

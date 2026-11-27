@@ -2,6 +2,7 @@
 
 require_relative "config"
 require_relative "clock_face"
+require_relative "quiet_hours"
 require_relative "scene"
 
 module Albumart
@@ -19,6 +20,7 @@ module Albumart
       snow: nil,
       mountain_weather: nil,
       clock: Albumart.monotonic_clock,
+      wall_clock: -> { Time.now },
       stats: nil
     )
       @renderer = renderer
@@ -28,6 +30,7 @@ module Albumart
       @snow = snow
       @mountain_weather = mountain_weather
       @clock = clock
+      @wall_clock = wall_clock
       @stats = stats
       @mutex = Mutex.new
       @art = nil
@@ -61,6 +64,17 @@ module Albumart
     end
 
     def current_scene
+      now = @wall_clock.call
+      case QuietHours.mode_at(now)
+      when :off then quiet_scene(:off)
+      when :dim then quiet_scene(:time, clock_face: ClockFace.at(now), dimmed: true)
+      else rotation_scene(now)
+      end
+    end
+
+    private
+
+    def rotation_scene(now)
       reading = @weather&.current
       snow = @snow&.current
       mountain_weather = @mountain_weather&.current
@@ -78,14 +92,19 @@ module Albumart
           bar: slot.bar && !(@title.empty? && @artist.empty?),
           elapsed: @clock.call - slot.started_at,
           weather: reading,
-          clock_face: slot.slide == :time ? ClockFace.at(Time.now) : nil,
+          clock_face: slot.slide == :time ? ClockFace.at(now) : nil,
           snow:,
           mountain_weather:,
         )
       end
     end
 
-    private
+    def quiet_scene(slide, clock_face: nil, dimmed: false)
+      Scene.new(
+        slide:, art: nil, title: "", artist: "", bar: false, elapsed: 0.0, weather: nil, clock_face:, snow: nil,
+        mountain_weather: nil, dimmed:,
+      )
+    end
 
     def cover_received(payload)
       if payload.bytesize > EMPTY_COVER_BYTES

@@ -17,6 +17,10 @@ require_relative "../lib/albumart/matrix"
 $stdout.sync = true
 Thread.abort_on_exception = true
 
+# The time slide and the quiet hours both read the wall clock in this zone.
+ENV["TZ"] ||= Albumart::TIME_ZONE
+Albumart.log("[display] time zone #{ENV.fetch('TZ')} (#{Time.now.strftime('%Z, UTC%:z')})")
+
 # The matrix drops root privileges, so load everything that reads files first.
 require "mqtt/client"
 require "mqtt/packet"

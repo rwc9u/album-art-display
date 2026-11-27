@@ -69,6 +69,7 @@ class MetricsServerTest < Minitest::Test
     assert_includes lines, 'albumart_current_slide{slide="snow"} 0.0'
     assert_includes lines, 'albumart_current_slide{slide="time"} 1.0'
     assert_includes lines, 'albumart_current_slide{slide="art"} 0.0'
+    assert_includes lines, 'albumart_current_slide{slide="off"} 0.0'
   end
 
   def test_leaves_out_ages_that_are_not_known_yet

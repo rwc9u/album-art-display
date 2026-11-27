@@ -67,7 +67,19 @@ module Albumart
     end
 
     def compose(scene)
+      image = slide_image(scene)
+      scene.dimmed ? dim(image) : image
+    end
+
+    def pixels(image)
+      image.export_pixels_to_str(0, 0, WIDTH, HEIGHT, "RGB")
+    end
+
+    private
+
+    def slide_image(scene)
       case scene.slide
+      when :off then blank
       when :art then art_slide(scene)
       when :time then time_slide(scene.clock_face)
       when :weather then weather_slide(scene.weather)
@@ -76,11 +88,13 @@ module Albumart
       end
     end
 
-    def pixels(image)
-      image.export_pixels_to_str(0, 0, WIDTH, HEIGHT, "RGB")
+    # A translucent black layer, the same composite as the title bar's shade.
+    def dim(image)
+      @dim_shade ||= Magick::Image.new(WIDTH, HEIGHT) do |info|
+        info.background_color = "rgba(0,0,0,#{1 - EVENING_BRIGHTNESS})"
+      end
+      image.composite(@dim_shade, 0, 0, Magick::OverCompositeOp)
     end
-
-    private
 
     def cover_format(blob)
       if blob.start_with?("\xFF\xD8\xFF".b)
